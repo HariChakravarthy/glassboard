@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ───────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('org_admin');
+    }
+
+    function isModuleLead() {
+      return hasRole('module_lead') || isAdmin();
+    }
+
+    function isModuleMember(moduleId) {
+      return isSignedIn() && (
+        isAdmin() ||
+        getUserData().moduleId == moduleId
+      );
+    }
+
+    // ── Users ──────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Modules ────────────────────────────────────────────────────
+    match /modules/{moduleId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isModuleLead() || isModuleMember(moduleId);
+      allow delete: if isAdmin();
+
+      // Tasks subcollection
+      match /tasks/{taskId} {
+        allow read: if isModuleMember(moduleId);
+        allow create, update: if isModuleLead() || isModuleMember(moduleId);
+        allow delete: if isModuleLead();
+      }
+    }
+
+    // ── Handshakes ─────────────────────────────────────────────────
+    match /handshakes/{handshakeId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.fromModule == getUserData().moduleId ||
+        resource.data.toModule   == getUserData().moduleId
+      );
+      allow create: if isModuleLead();
+      allow update: if isModuleLead() && (
+        // Only the receiving module lead can respond
+        resource.data.toModule == getUserData().moduleId ||
+        isAdmin()
+      );
+      allow delete: if false; // Immutable — never delete
+    }
+
+    // ── Files ──────────────────────────────────────────────────────
+    match /files/{fileId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        getUserData().moduleId in resource.data.moduleScope
+      );
+      allow create: if isModuleLead();
+      allow update: if isModuleLead();
+      allow delete: if false; // Immutable — no deletion
+
+      match /versions/{versionId} {
+        allow read: if isModuleLead() || isAdmin();
+        allow create: if isModuleLead();
+        allow update, delete: if false;
+      }
+    }
+
+    // ── Audit Log ──────────────────────────────────────────────────
+    match /auditLog/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn(); // Written by app/Cloud Functions
+      allow update, delete: if false; // Immutable — append-only
+    }
+
+    // ── Notifications ──────────────────────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.recipientId == request.auth.uid
+      );
+      allow create: if isSignedIn();
+      allow update: if resource.data.recipientId == request.auth.uid; // mark read
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Handshake proof attachments — any authenticated user can read, leads can write
+    match /handshake_proofs/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 20 * 1024 * 1024; // 20MB max
+    }
+
+    // Shared module files — any authenticated user can read, leads can write
+    match /shared_files/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 50 * 1024 * 1024; // 50MB max
+    }
+  }
+}
