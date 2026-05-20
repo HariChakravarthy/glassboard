@@ -6,11 +6,16 @@ import '../../../core/constants/app_constants.dart';
 class AdminRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Stream<List<UserModel>> watchAllUsers() {
+  Stream<List<UserModel>> watchAllUsers(String orgId) {
+    if (orgId.isEmpty) return Stream.value([]);
     return _db.collection(AppConstants.usersCollection)
-        .orderBy('createdAt', descending: false)
+        .where('orgId', isEqualTo: orgId)
         .snapshots()
-        .map((s) => s.docs.map(UserModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(UserModel.fromFirestore).toList();
+          list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+          return list;
+        });
   }
 
   Future<void> updateUserRole(String uid, String role) async {

@@ -8,10 +8,14 @@ import '../../../../data/repositories/admin_repository.dart';
 import '../../../../data/models/user_model.dart';
 import '../../../../shared/widgets/shared_widgets.dart';
 
+import '../../../../core/providers/auth_provider.dart';
+
 final adminRepositoryProvider = Provider<AdminRepository>((_) => AdminRepository());
 
 final allUsersProvider = StreamProvider<List<UserModel>>((ref) {
-  return ref.watch(adminRepositoryProvider).watchAllUsers();
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
+  return ref.watch(adminRepositoryProvider).watchAllUsers(user.orgId);
 });
 
 class AdminUsersScreen extends ConsumerWidget {

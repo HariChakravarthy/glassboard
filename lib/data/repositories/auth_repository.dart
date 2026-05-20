@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -20,22 +21,79 @@ class AuthRepository {
     return _fetchUser(cred.user!.uid);
   }
 
-  /// Register with email / password, creates Firestore profile
+  String _generateInviteCode() {
+    final rand = Random();
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    return List.generate(6, (i) => chars[rand.nextInt(chars.length)]).join();
+  }
+
+  Future<String> _getUniqueInviteCode() async {
+    while (true) {
+      final code = _generateInviteCode();
+      final snap = await _db.collection('organizations')
+          .where('inviteCode', isEqualTo: code)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return code;
+    }
+  }
+
+  /// Register with email / password, creates Firestore profile & organization
   Future<UserModel> registerWithEmail({
     required String name,
     required String email,
     required String password,
-    String role = AppConstants.roleMember,
+    required String role,
+    String? orgName,
+    String? inviteCode,
   }) async {
+    String finalOrgId = '';
+
+    if (role == AppConstants.roleOrgAdmin) {
+      if (orgName == null || orgName.trim().isEmpty) {
+        throw Exception('Organization name is required for admins');
+      }
+      final orgCode = await _getUniqueInviteCode();
+      final orgRef = _db.collection('organizations').doc();
+      finalOrgId = orgRef.id;
+
+      await orgRef.set({
+        'name':       orgName.trim(),
+        'inviteCode': orgCode,
+        'createdAt':  FieldValue.serverTimestamp(),
+        'createdBy':  '', // Filled below after user UID is created
+      });
+    } else {
+      if (inviteCode == null || inviteCode.trim().isEmpty) {
+        throw Exception('Invite code is required to join an organization');
+      }
+      final codeUpper = inviteCode.trim().toUpperCase();
+      final orgSnap = await _db.collection('organizations')
+          .where('inviteCode', isEqualTo: codeUpper)
+          .limit(1)
+          .get();
+      if (orgSnap.docs.isEmpty) {
+        throw Exception('Invalid invite code. Please verify with your admin.');
+      }
+      finalOrgId = orgSnap.docs.first.id;
+    }
+
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email, password: password);
     await cred.user!.updateDisplayName(name);
+
+    if (role == AppConstants.roleOrgAdmin) {
+      await _db.collection('organizations').doc(finalOrgId).update({
+        'createdBy': cred.user!.uid,
+      });
+    }
 
     final user = UserModel(
       uid:       cred.user!.uid,
       name:      name,
       email:     email,
       role:      role,
+      orgId:     finalOrgId,
       createdAt: DateTime.now(),
     );
     await _db.collection(AppConstants.usersCollection)
@@ -44,7 +102,7 @@ class AuthRepository {
     return user;
   }
 
-  /// Google Sign-In
+  /// Google Sign-In (with fallback empty orgId)
   Future<UserModel> signInWithGoogle() async {
     final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) throw Exception('Google sign-in cancelled');
@@ -63,6 +121,7 @@ class AuthRepository {
         name:      cred.user!.displayName ?? googleUser.displayName ?? '',
         email:     cred.user!.email ?? '',
         role:      AppConstants.roleMember,
+        orgId:     '', // Google Sign-in sandbox
         photoUrl:  cred.user!.photoURL,
         createdAt: DateTime.now(),
       );
@@ -97,5 +156,11 @@ class AuthRepository {
     await _db.collection(AppConstants.usersCollection)
         .doc(uid)
         .update({'fcmToken': token});
+  }
+
+  Future<Map<String, dynamic>?> getOrganization(String orgId) async {
+    if (orgId.isEmpty) return null;
+    final snap = await _db.collection('organizations').doc(orgId).get();
+    return snap.data();
   }
 }

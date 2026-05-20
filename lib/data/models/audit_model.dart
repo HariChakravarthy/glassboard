@@ -6,6 +6,7 @@ class AuditLogModel {
   final String actorName;
   final String action;
   final String targetModule;
+  final String orgId;
   final Map<String, dynamic> metadata;
   final DateTime timestamp;
 
@@ -15,6 +16,7 @@ class AuditLogModel {
     required this.actorName,
     required this.action,
     required this.targetModule,
+    required this.orgId,
     required this.metadata,
     required this.timestamp,
   });
@@ -27,6 +29,7 @@ class AuditLogModel {
       actorName:    d['actorName'] ?? '',
       action:       d['action'] ?? '',
       targetModule: d['targetModule'] ?? '',
+      orgId:        d['orgId'] ?? '',
       metadata:     Map<String, dynamic>.from(d['metadata'] ?? {}),
       timestamp:    (d['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
@@ -37,6 +40,7 @@ class AuditLogModel {
     'actorName':    actorName,
     'action':       action,
     'targetModule': targetModule,
+    'orgId':        orgId,
     'metadata':     metadata,
     'timestamp':    Timestamp.fromDate(timestamp),
   };
@@ -47,6 +51,7 @@ class NotificationModel {
   final String recipientId;
   final String type;
   final String message;
+  final String orgId;
   final bool read;
   final DateTime createdAt;
   final String? relatedId;
@@ -56,6 +61,7 @@ class NotificationModel {
     required this.recipientId,
     required this.type,
     required this.message,
+    required this.orgId,
     required this.read,
     required this.createdAt,
     this.relatedId,
@@ -68,9 +74,20 @@ class NotificationModel {
       recipientId: d['recipientId'] ?? '',
       type:        d['type'] ?? '',
       message:     d['message'] ?? '',
+      orgId:       d['orgId'] ?? '',
       read:        d['read'] ?? false,
       createdAt:   (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       relatedId:   d['relatedId'],
     );
   }
+
+  Map<String, dynamic> toMap() => {
+    'recipientId': recipientId,
+    'type':        type,
+    'message':     message,
+    'orgId':       orgId,
+    'read':        read,
+    'createdAt':   Timestamp.fromDate(createdAt),
+    'relatedId':   relatedId,
+  };
 }

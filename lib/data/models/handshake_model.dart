@@ -8,6 +8,7 @@ class HandshakeModel {
   final String toModule;
   final String toModuleName;
   final String status;
+  final String orgId;
   final String? proofUrl;
   final String? proofNote;
   final String? proofType;   // 'photo' | 'document' | 'text'
@@ -24,6 +25,7 @@ class HandshakeModel {
     required this.toModule,
     required this.toModuleName,
     required this.status,
+    required this.orgId,
     this.proofUrl,
     this.proofNote,
     this.proofType,
@@ -47,6 +49,7 @@ class HandshakeModel {
       toModule:        d['toModule'] ?? '',
       toModuleName:    d['toModuleName'] ?? '',
       status:          d['status'] ?? AppConstants.handshakePending,
+      orgId:           d['orgId'] ?? '',
       proofUrl:        d['proofUrl'],
       proofNote:       d['proofNote'],
       proofType:       d['proofType'],
@@ -64,6 +67,7 @@ class HandshakeModel {
     'toModule':        toModule,
     'toModuleName':    toModuleName,
     'status':          status,
+    'orgId':           orgId,
     'proofUrl':        proofUrl,
     'proofNote':       proofNote,
     'proofType':       proofType,

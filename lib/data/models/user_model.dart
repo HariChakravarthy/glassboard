@@ -6,6 +6,7 @@ class UserModel {
   final String name;
   final String email;
   final String role;
+  final String orgId;
   final String? moduleId;
   final String? fcmToken;
   final String? photoUrl;
@@ -16,6 +17,7 @@ class UserModel {
     required this.name,
     required this.email,
     required this.role,
+    required this.orgId,
     this.moduleId,
     this.fcmToken,
     this.photoUrl,
@@ -33,6 +35,7 @@ class UserModel {
       name:      d['name'] ?? '',
       email:     d['email'] ?? '',
       role:      d['role'] ?? AppConstants.roleMember,
+      orgId:     d['orgId'] ?? '',
       moduleId:  d['moduleId'],
       fcmToken:  d['fcmToken'],
       photoUrl:  d['photoUrl'],
@@ -45,6 +48,7 @@ class UserModel {
     'name':      name,
     'email':     email,
     'role':      role,
+    'orgId':     orgId,
     'moduleId':  moduleId,
     'fcmToken':  fcmToken,
     'photoUrl':  photoUrl,
@@ -52,7 +56,7 @@ class UserModel {
   };
 
   UserModel copyWith({
-    String? name, String? role, String? moduleId,
+    String? name, String? role, String? orgId, String? moduleId,
     String? fcmToken, String? photoUrl,
   }) =>
     UserModel(
@@ -60,6 +64,7 @@ class UserModel {
       name:      name ?? this.name,
       email:     email,
       role:      role ?? this.role,
+      orgId:     orgId ?? this.orgId,
       moduleId:  moduleId ?? this.moduleId,
       fcmToken:  fcmToken ?? this.fcmToken,
       photoUrl:  photoUrl ?? this.photoUrl,

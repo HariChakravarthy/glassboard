@@ -5,6 +5,7 @@ class FileModel {
   final String name;
   final String url;
   final List<String> moduleScope;
+  final String orgId;
   final String uploadedBy;
   final DateTime uploadedAt;
   final String currentVersion;
@@ -16,6 +17,7 @@ class FileModel {
     required this.name,
     required this.url,
     required this.moduleScope,
+    required this.orgId,
     required this.uploadedBy,
     required this.uploadedAt,
     required this.currentVersion,
@@ -33,6 +35,7 @@ class FileModel {
       name:           d['name'] ?? '',
       url:            d['url'] ?? '',
       moduleScope:    List<String>.from(d['moduleScope'] ?? []),
+      orgId:          d['orgId'] ?? '',
       uploadedBy:     d['uploadedBy'] ?? '',
       uploadedAt:     (d['uploadedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       currentVersion: d['currentVersion'] ?? 'v1',
@@ -45,6 +48,7 @@ class FileModel {
     'name':           name,
     'url':            url,
     'moduleScope':    moduleScope,
+    'orgId':          orgId,
     'uploadedBy':     uploadedBy,
     'uploadedAt':     Timestamp.fromDate(uploadedAt),
     'currentVersion': currentVersion,

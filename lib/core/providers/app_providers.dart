@@ -18,9 +18,9 @@ final auditRepositoryProvider = Provider<AuditRepository>((_) => AuditRepository
 
 // ── Modules ────────────────────────────────────────────────────────
 final allModulesProvider = StreamProvider<List<ModuleModel>>((ref) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
-  return ref.watch(moduleRepositoryProvider).watchAllModules();
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
+  return ref.watch(moduleRepositoryProvider).watchAllModules(user.orgId);
 });
 
 final moduleDetailProvider = StreamProvider.family<ModuleModel?, String>((ref, id) {
@@ -30,9 +30,9 @@ final moduleDetailProvider = StreamProvider.family<ModuleModel?, String>((ref, i
 });
 
 final moduleLiveProgressProvider = StreamProvider.family<double, String>((ref, id) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value(0.0);
-  return ref.watch(moduleRepositoryProvider).watchModuleProgressRtdb(id);
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value(0.0);
+  return ref.watch(moduleRepositoryProvider).watchModuleProgressRtdb(user.orgId, id);
 });
 
 
@@ -59,9 +59,9 @@ final moduleHandshakesProvider = StreamProvider.family<List<HandshakeModel>, Str
 });
 
 final allHandshakesProvider = StreamProvider<List<HandshakeModel>>((ref) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
-  return ref.watch(handshakeRepositoryProvider).watchAllHandshakes();
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
+  return ref.watch(handshakeRepositoryProvider).watchAllHandshakes(user.orgId);
 });
 
 // ── Files ──────────────────────────────────────────────────────────
@@ -69,11 +69,11 @@ final allHandshakesProvider = StreamProvider<List<HandshakeModel>>((ref) {
 /// Pass empty string to get an empty result immediately.
 final moduleFilesProvider = StreamProvider.family<List<FileModel>, String>(
     (ref, moduleIdsKey) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
   if (moduleIdsKey.isEmpty) return Stream.value([]);
   final ids = moduleIdsKey.split(',');
-  return ref.watch(fileRepositoryProvider).watchModuleFiles(ids);
+  return ref.watch(fileRepositoryProvider).watchModuleFiles(user.orgId, ids);
 });
 
 final fileVersionsProvider = StreamProvider.family<List<FileVersionModel>, String>(
@@ -85,16 +85,16 @@ final fileVersionsProvider = StreamProvider.family<List<FileVersionModel>, Strin
 
 // Admin-visible all-files stream (no moduleScope filter)
 final allFilesProvider = StreamProvider<List<FileModel>>((ref) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
-  return ref.watch(fileRepositoryProvider).watchAllFiles();
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
+  return ref.watch(fileRepositoryProvider).watchAllFiles(user.orgId);
 });
 
 // ── Audit & Notifications ─────────────────────────────────────────
 final auditLogProvider = StreamProvider<List<AuditLogModel>>((ref) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
-  return ref.watch(auditRepositoryProvider).watchAuditLog();
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
+  return ref.watch(auditRepositoryProvider).watchAuditLog(user.orgId);
 });
 
 final notificationsProvider = StreamProvider.family<List<NotificationModel>, String>(

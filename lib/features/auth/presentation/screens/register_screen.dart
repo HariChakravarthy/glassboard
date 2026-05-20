@@ -18,12 +18,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _nameCtrl   = TextEditingController();
   final _emailCtrl  = TextEditingController();
   final _passCtrl   = TextEditingController();
+  final _orgNameCtrl = TextEditingController();
+  final _inviteCodeCtrl = TextEditingController();
   String _role = AppConstants.roleMember;
   bool _obscure = true;
 
   @override
   void dispose() {
-    _nameCtrl.dispose(); _emailCtrl.dispose(); _passCtrl.dispose();
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    _orgNameCtrl.dispose();
+    _inviteCodeCtrl.dispose();
     super.dispose();
   }
 
@@ -34,11 +40,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       email: _emailCtrl.text.trim(),
       password: _passCtrl.text,
       role: _role,
+      orgName: _role == AppConstants.roleOrgAdmin ? _orgNameCtrl.text.trim() : null,
+      inviteCode: _role != AppConstants.roleOrgAdmin ? _inviteCodeCtrl.text.trim() : null,
     );
     final state = ref.read(authNotifierProvider);
     if (state.hasError && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(state.error.toString())));
+        SnackBar(content: Text(state.error.toString().replaceAll('Exception: ', ''))));
     }
   }
 
@@ -107,6 +115,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     _roleChip(AppConstants.roleOrgAdmin, 'ORG ADMIN', AppTheme.primary),
                   ],
                 ).animate().fadeIn(delay: 250.ms),
+
+                const SizedBox(height: 20),
+
+                if (_role == AppConstants.roleOrgAdmin) ...[
+                  _field(_orgNameCtrl, 'Organization Name (e.g. IIT Guwahati)', Icons.business_rounded,
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Organization Name is required' : null)
+                      .animate().fadeIn(duration: 200.ms),
+                ] else ...[
+                  _field(_inviteCodeCtrl, 'Organization Invite Code', Icons.vpn_key_outlined,
+                      validator: (v) => v == null || v.trim().length != 6
+                          ? '6-character Invite Code is required' : null)
+                      .animate().fadeIn(duration: 200.ms),
+                ],
 
                 const SizedBox(height: 32),
 

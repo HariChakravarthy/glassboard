@@ -92,6 +92,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
         file:        File(file.path!),
         fileName:    file.name,
         moduleScope: user.moduleId != null ? [user.moduleId!] : [],
+        orgId:       user.orgId,
         uploadedBy:  user.uid,
         mimeType:    file.extension != null
             ? _mimeFromExtension(file.extension!)

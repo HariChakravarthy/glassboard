@@ -15,11 +15,16 @@ class ModuleRepository {
 
   // ── Modules ────────────────────────────────────────────────────────
 
-  Stream<List<ModuleModel>> watchAllModules() {
+  Stream<List<ModuleModel>> watchAllModules(String orgId) {
+    if (orgId.isEmpty) return Stream.value([]);
     return _db.collection(AppConstants.modulesCollection)
-        .orderBy('createdAt', descending: false)
+        .where('orgId', isEqualTo: orgId)
         .snapshots()
-        .map((s) => s.docs.map(ModuleModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(ModuleModel.fromFirestore).toList();
+          list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+          return list;
+        });
   }
 
   Stream<ModuleModel?> watchModule(String moduleId) {
@@ -47,13 +52,17 @@ class ModuleRepository {
   }
 
   Future<void> updateModuleProgress(String moduleId, double progress) async {
+    // Fetch module to get orgId
+    final module = await getModule(moduleId);
+    final orgId = module.orgId;
+
     // Update Firestore
     await _db.collection(AppConstants.modulesCollection)
         .doc(moduleId)
         .update({'progress': progress});
     // Broadcast via Realtime DB for live sync
     try {
-      await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
+      await _rtdb.ref('orgs/$orgId/${AppConstants.rtdbModuleProgress}/$moduleId')
           .set({'progress': progress, 'updatedAt': ServerValue.timestamp});
     } catch (e) {
       debugPrint('Failed to update RTDB: $e');
@@ -61,9 +70,10 @@ class ModuleRepository {
   }
 
   /// Watch live progress from Realtime DB
-  Stream<double> watchModuleProgressRtdb(String moduleId) {
+  Stream<double> watchModuleProgressRtdb(String orgId, String moduleId) {
+    if (orgId.isEmpty) return Stream.value(0.0);
     try {
-      return _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId/progress')
+      return _rtdb.ref('orgs/$orgId/${AppConstants.rtdbModuleProgress}/$moduleId/progress')
           .onValue
           .map((event) => (event.snapshot.value as num?)?.toDouble() ?? 0.0);
     } catch (e) {
@@ -127,6 +137,9 @@ class ModuleRepository {
   }
 
   Future<void> _recalcProgress(String moduleId) async {
+    final module = await getModule(moduleId);
+    final orgId = module.orgId;
+
     final snap = await _db
         .collection(AppConstants.modulesCollection)
         .doc(moduleId)
@@ -141,7 +154,7 @@ class ModuleRepository {
             'status': AppConstants.statusNotStarted,
           });
       try {
-        await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
+        await _rtdb.ref('orgs/$orgId/${AppConstants.rtdbModuleProgress}/$moduleId')
             .set({'progress': 0.0, 'updatedAt': ServerValue.timestamp});
       } catch (_) {}
       return;
@@ -167,7 +180,7 @@ class ModuleRepository {
         });
 
     try {
-      await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
+      await _rtdb.ref('orgs/$orgId/${AppConstants.rtdbModuleProgress}/$moduleId')
           .set({'progress': progress, 'updatedAt': ServerValue.timestamp});
     } catch (e) {
       debugPrint('Failed to update RTDB: $e');

@@ -21,6 +21,7 @@ class FileRepository {
     required File file,
     required String fileName,
     required List<String> moduleScope,
+    required String orgId,
     required String uploadedBy,
     String? mimeType,
   }) async {
@@ -37,6 +38,7 @@ class FileRepository {
       name:           fileName,
       url:            url,
       moduleScope:    moduleScope,
+      orgId:          orgId,
       uploadedBy:     uploadedBy,
       uploadedAt:     DateTime.now(),
       currentVersion: 'v1',
@@ -50,18 +52,19 @@ class FileRepository {
       name:           fileModel.name,
       url:            fileModel.url,
       moduleScope:    fileModel.moduleScope,
+      orgId:          fileModel.orgId,
       uploadedBy:     fileModel.uploadedBy,
       uploadedAt:     fileModel.uploadedAt,
       currentVersion: fileModel.currentVersion,
       mimeType:       fileModel.mimeType,
       sizeBytes:      fileModel.sizeBytes,
     );
-
   }
 
   Future<void> uploadNewVersion({
     required String fileId,
     required File file,
+    required String orgId,
     required String modifiedBy,
     required String changeSummary,
     required String currentVersion,
@@ -96,6 +99,7 @@ class FileRepository {
       'actorName':    '',
       'action':       'FILE_UPDATED',
       'targetModule': '',
+      'orgId':        orgId,
       'metadata':     {'fileId': fileId, 'version': vNum},
       'timestamp':    Timestamp.now(),
     });
@@ -108,21 +112,32 @@ class FileRepository {
     return 'v${num + 1}';
   }
 
-  Stream<List<FileModel>> watchModuleFiles(List<String> moduleIds) {
-    if (moduleIds.isEmpty) return Stream.value([]);
+  Stream<List<FileModel>> watchModuleFiles(String orgId, List<String> moduleIds) {
+    if (moduleIds.isEmpty || orgId.isEmpty) return Stream.value([]);
     return _db.collection(AppConstants.filesCollection)
-        .where('moduleScope', arrayContainsAny: moduleIds)
-        .orderBy('uploadedAt', descending: true)
+        .where('orgId', isEqualTo: orgId)
         .snapshots()
-        .map((s) => s.docs.map(FileModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs
+              .map(FileModel.fromFirestore)
+              .where((f) => f.moduleScope.any((m) => moduleIds.contains(m)))
+              .toList();
+          list.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+          return list;
+        });
   }
 
-  /// Admin-only — returns all files without moduleScope filter
-  Stream<List<FileModel>> watchAllFiles() {
+  /// Admin-only — returns all files within organization
+  Stream<List<FileModel>> watchAllFiles(String orgId) {
+    if (orgId.isEmpty) return Stream.value([]);
     return _db.collection(AppConstants.filesCollection)
-        .orderBy('uploadedAt', descending: true)
+        .where('orgId', isEqualTo: orgId)
         .snapshots()
-        .map((s) => s.docs.map(FileModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(FileModel.fromFirestore).toList();
+          list.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+          return list;
+        });
   }
 
   Stream<List<FileVersionModel>> watchVersions(String fileId) {
@@ -136,6 +151,9 @@ class FileRepository {
 
   Future<void> restoreVersion(
       String fileId, FileVersionModel version, String restoredBy) async {
+    final fileSnap = await _db.collection(AppConstants.filesCollection).doc(fileId).get();
+    final orgId = fileSnap.exists ? (fileSnap.data()?['orgId'] as String? ?? '') : '';
+
     await _db.collection(AppConstants.filesCollection).doc(fileId).update({
       'url':            version.url,
       'currentVersion': '${version.id}_restored',
@@ -146,6 +164,7 @@ class FileRepository {
       'actorName':    '',
       'action':       'FILE_RESTORED',
       'targetModule': '',
+      'orgId':        orgId,
       'metadata':     {'fileId': fileId, 'restoredVersionId': version.id},
       'timestamp':    Timestamp.now(),
     });

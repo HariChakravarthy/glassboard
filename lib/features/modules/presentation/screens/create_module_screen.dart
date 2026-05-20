@@ -53,6 +53,7 @@ class _CreateModuleScreenState extends ConsumerState<CreateModuleScreen> {
         name: _nameCtrl.text.trim(),
         description: _descCtrl.text.trim(),
         ownerId: _selectedLeadId ?? user.uid,
+        orgId: user.orgId,
         status: _status,
         progress: 0,
         dependsOn: _selectedDeps,

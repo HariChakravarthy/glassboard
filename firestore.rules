@@ -15,6 +15,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function userOrg() {
+      return getUserData().orgId;
+    }
+
+    function isOrgUser(resourceData) {
+      return resourceData.orgId == userOrg();
+    }
+
     function isAdmin() {
       return isSignedIn() && getUserData().role == 'org_admin';
     }
@@ -26,69 +34,70 @@ service cloud.firestore {
       );
     }
 
+    // ── Organizations ──────────────────────────────────────────────
+    match /organizations/{orgId} {
+      allow read: if true; // Public check needed for registering users using invite code
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin() && resource.data.id == orgId;
+    }
+
     // ── Users ──────────────────────────────────────────────────────
-    // Any signed-in user can read all users (needed for admin screens & stats)
     match /users/{uid} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (resource == null || resource.data.orgId == userOrg());
       allow create: if isOwner(uid);
-      allow update: if isOwner(uid) || isAdmin();
-      allow delete: if isAdmin();
+      allow update: if (isOwner(uid) && (request.resource.data.orgId == resource.data.orgId)) || (isAdmin() && isOrgUser(resource.data));
+      allow delete: if isAdmin() && isOrgUser(resource.data);
     }
 
     // ── Modules ────────────────────────────────────────────────────
-    // All authenticated users can read modules (dashboard, dependency graph)
     match /modules/{moduleId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin();
-      allow update: if isSignedIn(); // progress updates allowed for any member
-      allow delete: if isAdmin();
+      allow read: if isSignedIn() && isOrgUser(resource.data);
+      allow create: if isAdmin() && request.resource.data.orgId == userOrg();
+      allow update: if isSignedIn() && isOrgUser(resource.data) && request.resource.data.orgId == userOrg();
+      allow delete: if isAdmin() && isOrgUser(resource.data);
 
-      // Tasks subcollection — any signed-in user in the org can read/update
+      // Tasks subcollection
       match /tasks/{taskId} {
-        allow read: if isSignedIn();
-        allow create, update: if isSignedIn();
-        allow delete: if isModuleLead();
+        allow read: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
+        allow create, update: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
+        allow delete: if isModuleLead() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
       }
     }
 
     // ── Handshakes ─────────────────────────────────────────────────
-    // Allow list for any authenticated user — app queries filter by moduleId
-    // resource.data checks removed from list operations (Firestore limitation)
     match /handshakes/{handshakeId} {
-      allow read: if isSignedIn();
-      allow create: if isModuleLead();
-      allow update: if isModuleLead();
-      allow delete: if false; // Immutable — never delete
+      allow read: if isSignedIn() && isOrgUser(resource.data);
+      allow create: if isModuleLead() && request.resource.data.orgId == userOrg();
+      allow update: if isModuleLead() && isOrgUser(resource.data) && request.resource.data.orgId == userOrg();
+      allow delete: if false; // Immutable
     }
 
     // ── Files ──────────────────────────────────────────────────────
-    // Allow read for all authenticated users — app filters by moduleScope in query
     match /files/{fileId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if false; // Immutable — no deletion
+      allow read: if isSignedIn() && isOrgUser(resource.data);
+      allow create: if isSignedIn() && request.resource.data.orgId == userOrg();
+      allow update: if isSignedIn() && isOrgUser(resource.data) && request.resource.data.orgId == userOrg();
+      allow delete: if false;
 
       match /versions/{versionId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
+        allow read: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/files/$(fileId)).data);
+        allow create: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/files/$(fileId)).data);
         allow update, delete: if false;
       }
     }
 
     // ── Audit Log ──────────────────────────────────────────────────
     match /auditLog/{logId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn(); // Written by app + Cloud Functions
-      allow update, delete: if false; // Immutable — append-only
+      allow read: if isAdmin() && isOrgUser(resource.data);
+      allow create: if isSignedIn() && request.resource.data.orgId == userOrg();
+      allow update, delete: if false; // Immutable
     }
 
     // ── Notifications ──────────────────────────────────────────────
-    // Allow list for signed-in users — app queries filter by recipientId
     match /notifications/{notifId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && isOwner(resource.data.recipientId);
       allow create: if isSignedIn();
-      allow update: if isSignedIn(); // mark as read
+      allow update: if isSignedIn() && isOwner(resource.data.recipientId);
       allow delete: if false;
     }
   }

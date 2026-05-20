@@ -38,11 +38,18 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserModel?>> {
     required String name,
     required String email,
     required String password,
-    String role = 'member',
+    required String role,
+    String? orgName,
+    String? inviteCode,
   }) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _repo.registerWithEmail(
-      name: name, email: email, password: password, role: role,
+      name: name,
+      email: email,
+      password: password,
+      role: role,
+      orgName: orgName,
+      inviteCode: inviteCode,
     ));
   }
 

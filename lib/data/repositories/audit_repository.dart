@@ -5,35 +5,40 @@ import '../../core/constants/app_constants.dart';
 class AuditRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Stream<List<AuditLogModel>> watchAuditLog({
+  Stream<List<AuditLogModel>> watchAuditLog(
+    String orgId, {
     String? filterModule,
     String? filterAction,
     DateTime? from,
     DateTime? to,
     int limit = 50,
   }) {
-    Query<Map<String, dynamic>> query =
-        _db.collection(AppConstants.auditLogCollection)
-            .orderBy('timestamp', descending: true)
-            .limit(limit);
+    if (orgId.isEmpty) return Stream.value([]);
+    return _db.collection(AppConstants.auditLogCollection)
+        .where('orgId', isEqualTo: orgId)
+        .snapshots()
+        .map((s) {
+          var list = s.docs.map(AuditLogModel.fromFirestore).toList();
 
-    if (filterModule != null && filterModule.isNotEmpty) {
-      query = query.where('targetModule', isEqualTo: filterModule);
-    }
-    if (filterAction != null && filterAction.isNotEmpty) {
-      query = query.where('action', isEqualTo: filterAction);
-    }
-    if (from != null) {
-      query = query.where('timestamp',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(from));
-    }
-    if (to != null) {
-      query = query.where('timestamp',
-          isLessThanOrEqualTo: Timestamp.fromDate(to));
-    }
+          if (filterModule != null && filterModule.isNotEmpty) {
+            list = list.where((l) => l.targetModule == filterModule).toList();
+          }
+          if (filterAction != null && filterAction.isNotEmpty) {
+            list = list.where((l) => l.action == filterAction).toList();
+          }
+          if (from != null) {
+            list = list.where((l) => l.timestamp.isAfter(from) || l.timestamp.isAtSameMomentAs(from)).toList();
+          }
+          if (to != null) {
+            list = list.where((l) => l.timestamp.isBefore(to) || l.timestamp.isAtSameMomentAs(to)).toList();
+          }
 
-    return query.snapshots()
-        .map((s) => s.docs.map(AuditLogModel.fromFirestore).toList());
+          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          if (list.length > limit) {
+            list = list.sublist(0, limit);
+          }
+          return list;
+        });
   }
 
   Future<void> appendLog(AuditLogModel log) async {

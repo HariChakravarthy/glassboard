@@ -8,6 +8,7 @@ class ModuleModel {
   final String status;
   final double progress;      // 0–100
   final List<String> dependsOn;
+  final String orgId;
   final String? description;
   final DateTime createdAt;
 
@@ -18,6 +19,7 @@ class ModuleModel {
     required this.status,
     required this.progress,
     required this.dependsOn,
+    required this.orgId,
     this.description,
     required this.createdAt,
   });
@@ -42,6 +44,7 @@ class ModuleModel {
       status:      d['status'] ?? AppConstants.statusNotStarted,
       progress:    (d['progress'] ?? 0).toDouble(),
       dependsOn:   List<String>.from(d['dependsOn'] ?? []),
+      orgId:       d['orgId'] ?? '',
       description: d['description'],
       createdAt:   (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
@@ -53,13 +56,14 @@ class ModuleModel {
     'status':      status,
     'progress':    progress,
     'dependsOn':   dependsOn,
+    'orgId':       orgId,
     'description': description,
     'createdAt':   Timestamp.fromDate(createdAt),
   };
 
   ModuleModel copyWith({
     String? name, String? status, double? progress,
-    List<String>? dependsOn, String? description,
+    List<String>? dependsOn, String? orgId, String? description,
   }) =>
     ModuleModel(
       id:          id,
@@ -68,6 +72,7 @@ class ModuleModel {
       status:      status ?? this.status,
       progress:    progress ?? this.progress,
       dependsOn:   dependsOn ?? this.dependsOn,
+      orgId:       orgId ?? this.orgId,
       description: description ?? this.description,
       createdAt:   createdAt,
     );

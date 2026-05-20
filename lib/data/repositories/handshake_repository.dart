@@ -21,6 +21,7 @@ class HandshakeRepository {
       actorName:    '',
       action:       'HANDSHAKE_INITIATED',
       targetModule: handshake.toModule,
+      orgId:        handshake.orgId,
       metadata:     {'fromModule': handshake.fromModule, 'handshakeId': hRef.id},
       timestamp:    DateTime.now(),
     ).toMap());
@@ -35,6 +36,7 @@ class HandshakeRepository {
       String handshakeId, String responderId, String responderName) async {
     final hSnap = await _db.collection(AppConstants.handshakesCollection).doc(handshakeId).get();
     if (!hSnap.exists) throw Exception('Handshake not found');
+    final orgId = hSnap.data()?['orgId'] as String? ?? '';
     final fromModuleId = hSnap.data()?['fromModule'] as String?;
 
     final batch = _db.batch();
@@ -58,6 +60,7 @@ class HandshakeRepository {
       'actorName':    responderName,
       'action':       'HANDSHAKE_ACCEPTED',
       'targetModule': '',
+      'orgId':        orgId,
       'metadata':     {'handshakeId': handshakeId},
       'timestamp':    Timestamp.now(),
     });
@@ -70,6 +73,7 @@ class HandshakeRepository {
       String rejectionReason) async {
     final hSnap = await _db.collection(AppConstants.handshakesCollection).doc(handshakeId).get();
     if (!hSnap.exists) throw Exception('Handshake not found');
+    final orgId = hSnap.data()?['orgId'] as String? ?? '';
     final fromModuleId = hSnap.data()?['fromModule'] as String?;
 
     final batch = _db.batch();
@@ -94,6 +98,7 @@ class HandshakeRepository {
       'actorName':    responderName,
       'action':       'HANDSHAKE_REJECTED',
       'targetModule': '',
+      'orgId':        orgId,
       'metadata':     {'handshakeId': handshakeId, 'reason': rejectionReason},
       'timestamp':    Timestamp.now(),
     });
@@ -107,9 +112,12 @@ class HandshakeRepository {
     return _db.collection(AppConstants.handshakesCollection)
         .where('toModule', isEqualTo: moduleId)
         .where('status', isEqualTo: AppConstants.handshakePending)
-        .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((s) => s.docs.map(HandshakeModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(HandshakeModel.fromFirestore).toList();
+          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return list;
+        });
   }
 
   Stream<List<HandshakeModel>> watchModuleHandshakes(String moduleId) {
@@ -119,16 +127,24 @@ class HandshakeRepository {
           Filter('fromModule', isEqualTo: moduleId),
           Filter('toModule', isEqualTo: moduleId),
         ))
-        .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((s) => s.docs.map(HandshakeModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(HandshakeModel.fromFirestore).toList();
+          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return list;
+        });
   }
 
-  Stream<List<HandshakeModel>> watchAllHandshakes() {
+  Stream<List<HandshakeModel>> watchAllHandshakes(String orgId) {
+    if (orgId.isEmpty) return Stream.value([]);
     return _db.collection(AppConstants.handshakesCollection)
-        .orderBy('timestamp', descending: true)
+        .where('orgId', isEqualTo: orgId)
         .snapshots()
-        .map((s) => s.docs.map(HandshakeModel.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(HandshakeModel.fromFirestore).toList();
+          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return list;
+        });
   }
 
   Future<HandshakeModel> getHandshake(String id) async {
