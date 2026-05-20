@@ -48,21 +48,15 @@ class AuthRepository {
     String? inviteCode,
   }) async {
     String finalOrgId = '';
+    String? orgCode;
 
     if (role == AppConstants.roleOrgAdmin) {
       if (orgName == null || orgName.trim().isEmpty) {
         throw Exception('Organization name is required for admins');
       }
-      final orgCode = await _getUniqueInviteCode();
+      orgCode = await _getUniqueInviteCode();
       final orgRef = _db.collection('organizations').doc();
       finalOrgId = orgRef.id;
-
-      await orgRef.set({
-        'name':       orgName.trim(),
-        'inviteCode': orgCode,
-        'createdAt':  FieldValue.serverTimestamp(),
-        'createdBy':  '', // Filled below after user UID is created
-      });
     } else {
       if (inviteCode == null || inviteCode.trim().isEmpty) {
         throw Exception('Invite code is required to join an organization');
@@ -78,18 +72,16 @@ class AuthRepository {
       finalOrgId = orgSnap.docs.first.id;
     }
 
+    // 1. Create Auth credential (this automatically signs the user in)
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email, password: password);
     await cred.user!.updateDisplayName(name);
 
-    if (role == AppConstants.roleOrgAdmin) {
-      await _db.collection('organizations').doc(finalOrgId).update({
-        'createdBy': cred.user!.uid,
-      });
-    }
+    final uid = cred.user!.uid;
 
+    // 2. Create user document first so that rules calling getUserData() can retrieve this profile
     final user = UserModel(
-      uid:       cred.user!.uid,
+      uid:       uid,
       name:      name,
       email:     email,
       role:      role,
@@ -97,8 +89,19 @@ class AuthRepository {
       createdAt: DateTime.now(),
     );
     await _db.collection(AppConstants.usersCollection)
-        .doc(user.uid)
+        .doc(uid)
         .set(user.toMap());
+
+    // 3. Create organization document (only for admins)
+    if (role == AppConstants.roleOrgAdmin) {
+      await _db.collection('organizations').doc(finalOrgId).set({
+        'name':       orgName!.trim(),
+        'inviteCode': orgCode,
+        'createdAt':  FieldValue.serverTimestamp(),
+        'createdBy':  uid,
+      });
+    }
+
     return user;
   }
 
