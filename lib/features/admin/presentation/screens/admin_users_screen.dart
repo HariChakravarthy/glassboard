@@ -187,6 +187,14 @@ class _RoleDropdownState extends State<_RoleDropdown> {
   }
 
   @override
+  void didUpdateWidget(covariant _RoleDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user.role != oldWidget.user.role) {
+      _selected = widget.user.role;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -247,6 +255,14 @@ class _ModuleDropdownState extends State<_ModuleDropdown> {
   void initState() {
     super.initState();
     _selected = widget.user.moduleId;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ModuleDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user.moduleId != oldWidget.user.moduleId) {
+      _selected = widget.user.moduleId;
+    }
   }
 
   @override

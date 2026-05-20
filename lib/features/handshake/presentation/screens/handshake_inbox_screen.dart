@@ -5,6 +5,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/providers/app_providers.dart';
 import '../../../../core/providers/auth_provider.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/widgets/shared_widgets.dart';
 import '../../../../data/models/handshake_model.dart';
 
@@ -16,7 +17,11 @@ class HandshakeInboxScreen extends ConsumerWidget {
     final userAsync = ref.watch(currentUserProvider);
     return userAsync.when(
       data: (user) {
-        if (user == null || user.moduleId == null) {
+        if (user == null) return const SizedBox();
+        final isOrgAdmin = user.role == AppConstants.roleOrgAdmin;
+        final targetModuleId = isOrgAdmin ? 'admin' : user.moduleId;
+
+        if (targetModuleId == null) {
           return const Scaffold(
             backgroundColor: AppTheme.bg,
             appBar: GlassAppBar(title: 'HANDSHAKE INBOX'),
@@ -28,7 +33,7 @@ class HandshakeInboxScreen extends ConsumerWidget {
           );
         }
 
-        final incomingAsync = ref.watch(incomingHandshakesProvider(user.moduleId!));
+        final incomingAsync = ref.watch(incomingHandshakesProvider(targetModuleId));
 
         return Scaffold(
           backgroundColor: AppTheme.bg,

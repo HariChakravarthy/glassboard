@@ -52,6 +52,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ── Full-screen routes (no bottom nav) ─────────────────────
+      GoRoute(path: '/modules/create', builder: (_, __) => const CreateModuleScreen()),
       GoRoute(
         path: '/modules/:id',
         builder: (_, state) => ModuleDetailScreen(moduleId: state.pathParameters['id']!),
@@ -70,7 +71,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/audit', builder: (_, __) => const AuditLogScreen()),
-      GoRoute(path: '/modules/create', builder: (_, __) => const CreateModuleScreen()),
       GoRoute(path: '/admin/users', builder: (_, __) => const AdminUsersScreen()),
       GoRoute(
         path: '/files/:id/preview',

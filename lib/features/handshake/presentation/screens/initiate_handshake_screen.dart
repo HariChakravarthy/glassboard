@@ -87,9 +87,19 @@ class _InitiateHandshakeScreenState
 
             modulesAsync.when(
               data: (modules) {
-                final others = modules
-                    .where((m) => m.id != widget.fromModuleId)
-                    .toList();
+                final others = [
+                  ...modules.where((m) => m.id != widget.fromModuleId),
+                  ModuleModel(
+                    id: 'admin',
+                    name: 'ORG ADMIN (Final Handoff)',
+                    description: 'Deliver the final system to Department Head / Org Admin.',
+                    ownerId: '',
+                    status: 'IN_PROGRESS',
+                    progress: 100,
+                    dependsOn: [],
+                    createdAt: DateTime.now(),
+                  )
+                ];
                 if (others.isEmpty) {
                   return const EmptyState(
                     icon: Icons.device_hub_outlined,

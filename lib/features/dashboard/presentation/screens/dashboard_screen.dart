@@ -295,8 +295,7 @@ class _ModuleCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liveProgress = ref.watch(moduleLiveProgressProvider(module.id)).valueOrNull
-        ?? module.progress;
+    final liveProgress = module.progress;
 
     return GestureDetector(
       onTap: () => context.push('/modules/${module.id}'),

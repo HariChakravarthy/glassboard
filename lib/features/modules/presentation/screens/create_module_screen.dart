@@ -8,6 +8,7 @@ import '../../../../core/providers/app_providers.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../data/models/module_model.dart';
 import '../../../../shared/widgets/shared_widgets.dart';
+import '../../../admin/presentation/screens/admin_users_screen.dart';
 
 class CreateModuleScreen extends ConsumerStatefulWidget {
   const CreateModuleScreen({super.key});
@@ -23,6 +24,7 @@ class _CreateModuleScreenState extends ConsumerState<CreateModuleScreen> {
   String _status = AppConstants.statusNotStarted;
   final List<String> _selectedDeps = [];
   bool _loading = false;
+  String? _selectedLeadId;
 
   static const _statuses = [
     AppConstants.statusNotStarted,
@@ -50,13 +52,16 @@ class _CreateModuleScreenState extends ConsumerState<CreateModuleScreen> {
         id: id,
         name: _nameCtrl.text.trim(),
         description: _descCtrl.text.trim(),
-        ownerId: user.uid,
+        ownerId: _selectedLeadId ?? user.uid,
         status: _status,
         progress: 0,
         dependsOn: _selectedDeps,
         createdAt: DateTime.now(),
       );
-      await ref.read(moduleRepositoryProvider).createModule(module);
+      final docId = await ref.read(moduleRepositoryProvider).createModule(module);
+      if (_selectedLeadId != null) {
+        await ref.read(adminRepositoryProvider).assignUserToModule(_selectedLeadId!, docId);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✓ Module created successfully')));
@@ -123,6 +128,37 @@ class _CreateModuleScreenState extends ConsumerState<CreateModuleScreen> {
               decoration: const InputDecoration(
                 hintText: 'What does this module own?',
               ),
+            ),
+            const SizedBox(height: 24),
+
+            // Assign Lead
+            const _Label('ASSIGN LEAD'),
+            const SizedBox(height: 8),
+            ref.watch(allUsersProvider).when(
+              data: (users) {
+                final leads = users.where((u) => u.isLead || u.isOrgAdmin).toList();
+                if (leads.isEmpty) {
+                  return const Text('No Leads or Admins registered yet.',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 13));
+                }
+                return DropdownButtonFormField<String>(
+                  initialValue: _selectedLeadId,
+                  dropdownColor: AppTheme.surface,
+                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
+                  ),
+                  hint: const Text('Select a Module Lead', style: TextStyle(color: AppTheme.textDim)),
+                  items: leads.map((u) => DropdownMenuItem(
+                    value: u.uid,
+                    child: Text('${u.name} (${u.role.replaceAll('role_', '').replaceAll('module_', '').toUpperCase()})'),
+                  )).toList(),
+                  onChanged: (val) => setState(() => _selectedLeadId = val),
+                  validator: (v) => v == null ? 'Lead assignment is required' : null,
+                );
+              },
+              loading: () => const LinearProgressIndicator(color: AppTheme.primary),
+              error: (e, _) => Text('Error loading leads: $e', style: const TextStyle(color: AppTheme.danger)),
             ),
             const SizedBox(height: 24),
 

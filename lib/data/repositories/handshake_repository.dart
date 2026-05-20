@@ -33,6 +33,10 @@ class HandshakeRepository {
 
   Future<void> acceptHandshake(
       String handshakeId, String responderId, String responderName) async {
+    final hSnap = await _db.collection(AppConstants.handshakesCollection).doc(handshakeId).get();
+    if (!hSnap.exists) throw Exception('Handshake not found');
+    final fromModuleId = hSnap.data()?['fromModule'] as String?;
+
     final batch = _db.batch();
 
     final hRef = _db.collection(AppConstants.handshakesCollection).doc(handshakeId);
@@ -41,6 +45,12 @@ class HandshakeRepository {
       'respondedAt': Timestamp.now(),
       'respondedBy': responderId,
     });
+
+    if (fromModuleId != null) {
+      batch.update(_db.collection(AppConstants.modulesCollection).doc(fromModuleId), {
+        'status': AppConstants.statusComplete,
+      });
+    }
 
     final aRef = _db.collection(AppConstants.auditLogCollection).doc();
     batch.set(aRef, {
@@ -58,6 +68,10 @@ class HandshakeRepository {
   Future<void> rejectHandshake(
       String handshakeId, String responderId, String responderName,
       String rejectionReason) async {
+    final hSnap = await _db.collection(AppConstants.handshakesCollection).doc(handshakeId).get();
+    if (!hSnap.exists) throw Exception('Handshake not found');
+    final fromModuleId = hSnap.data()?['fromModule'] as String?;
+
     final batch = _db.batch();
 
     final hRef = _db.collection(AppConstants.handshakesCollection).doc(handshakeId);
@@ -67,6 +81,12 @@ class HandshakeRepository {
       'respondedBy':     responderId,
       'rejectionReason': rejectionReason,
     });
+
+    if (fromModuleId != null) {
+      batch.update(_db.collection(AppConstants.modulesCollection).doc(fromModuleId), {
+        'status': AppConstants.statusInProgress,
+      });
+    }
 
     final aRef = _db.collection(AppConstants.auditLogCollection).doc();
     batch.set(aRef, {

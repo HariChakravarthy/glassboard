@@ -1,12 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 import '../models/module_model.dart';
 import '../models/task_model.dart';
 import '../../core/constants/app_constants.dart';
 
 class ModuleRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseDatabase _rtdb = FirebaseDatabase.instance;
+  final FirebaseDatabase _rtdb = FirebaseDatabase.instanceFor(
+    app: Firebase.app(),
+    databaseURL: 'https://glassboard-hari.asia-southeast1.firebasedatabase.app/',
+  );
 
   // ── Modules ────────────────────────────────────────────────────────
 
@@ -47,15 +52,24 @@ class ModuleRepository {
         .doc(moduleId)
         .update({'progress': progress});
     // Broadcast via Realtime DB for live sync
-    await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
-        .set({'progress': progress, 'updatedAt': ServerValue.timestamp});
+    try {
+      await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
+          .set({'progress': progress, 'updatedAt': ServerValue.timestamp});
+    } catch (e) {
+      debugPrint('Failed to update RTDB: $e');
+    }
   }
 
   /// Watch live progress from Realtime DB
   Stream<double> watchModuleProgressRtdb(String moduleId) {
-    return _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId/progress')
-        .onValue
-        .map((event) => (event.snapshot.value as num?)?.toDouble() ?? 0.0);
+    try {
+      return _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId/progress')
+          .onValue
+          .map((event) => (event.snapshot.value as num?)?.toDouble() ?? 0.0);
+    } catch (e) {
+      debugPrint('Failed to watch RTDB: $e');
+      return Stream.value(0.0);
+    }
   }
 
   Future<void> deleteModule(String moduleId) async {
@@ -112,18 +126,52 @@ class ModuleRepository {
     await _recalcProgress(moduleId);
   }
 
-  /// Recalculate + push module progress based on completed tasks
   Future<void> _recalcProgress(String moduleId) async {
     final snap = await _db
         .collection(AppConstants.modulesCollection)
         .doc(moduleId)
         .collection(AppConstants.tasksSubcollection)
         .get();
-    if (snap.docs.isEmpty) return;
+
+    if (snap.docs.isEmpty) {
+      await _db.collection(AppConstants.modulesCollection)
+          .doc(moduleId)
+          .update({
+            'progress': 0.0,
+            'status': AppConstants.statusNotStarted,
+          });
+      try {
+        await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
+            .set({'progress': 0.0, 'updatedAt': ServerValue.timestamp});
+      } catch (_) {}
+      return;
+    }
+
     final total     = snap.docs.length;
     final completed = snap.docs.where((d) => d['completed'] == true).length;
     final progress  = (completed / total * 100).roundToDouble();
-    await updateModuleProgress(moduleId, progress);
+
+    // Automated status transitions based on checklist progress
+    String newStatus = AppConstants.statusInProgress;
+    if (progress == 0.0) {
+      newStatus = AppConstants.statusNotStarted;
+    } else if (progress >= 100.0) {
+      newStatus = AppConstants.statusReview;
+    }
+
+    await _db.collection(AppConstants.modulesCollection)
+        .doc(moduleId)
+        .update({
+          'progress': progress,
+          'status': newStatus,
+        });
+
+    try {
+      await _rtdb.ref('${AppConstants.rtdbModuleProgress}/$moduleId')
+          .set({'progress': progress, 'updatedAt': ServerValue.timestamp});
+    } catch (e) {
+      debugPrint('Failed to update RTDB: $e');
+    }
   }
 
   /// Check if all tasks are complete (for handshake gate)
