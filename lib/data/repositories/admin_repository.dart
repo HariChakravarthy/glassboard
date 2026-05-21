@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../core/utils/firestore_retry.dart';
 
 
 class AdminRepository {
@@ -8,14 +9,16 @@ class AdminRepository {
 
   Stream<List<UserModel>> watchAllUsers(String orgId) {
     if (orgId.isEmpty) return Stream.value([]);
-    return _db.collection(AppConstants.usersCollection)
-        .where('orgId', isEqualTo: orgId)
-        .snapshots()
-        .map((s) {
-          final list = s.docs.map(UserModel.fromFirestore).toList();
-          list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          return list;
-        });
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.usersCollection)
+          .where('orgId', isEqualTo: orgId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs.map(UserModel.fromFirestore).toList();
+            list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+            return list;
+          });
+    });
   }
 
   Future<void> updateUserRole(String uid, String role) async {

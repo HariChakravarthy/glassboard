@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/providers/auth_provider.dart';
-import '../../../../core/providers/app_providers.dart';
 import 'offline_banner.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -14,14 +13,77 @@ class MainShell extends ConsumerStatefulWidget {
   ConsumerState<MainShell> createState() => _MainShellState();
 }
 
+class _NavItemData {
+  final String route;
+  final IconData icon;
+  final String label;
+  final Color selectedColor;
+
+  const _NavItemData({
+    required this.route,
+    required this.icon,
+    required this.label,
+    required this.selectedColor,
+  });
+}
+
 class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
 
-  List<String> _getRoutes(dynamic user) {
-    if (user != null && user.isMember) {
-      return const ['/dashboard', '/files', '/notifications'];
+  List<_NavItemData> _getNavItems(dynamic user) {
+    if (user == null) {
+      return const [
+        _NavItemData(
+          route: '/dashboard',
+          icon: Icons.grid_view_rounded,
+          label: 'MODULES',
+          selectedColor: AppTheme.primary,
+        ),
+      ];
     }
-    return const ['/dashboard', '/handshake/inbox', '/files', '/notifications'];
+
+    final items = <_NavItemData>[
+      const _NavItemData(
+        route: '/dashboard',
+        icon: Icons.grid_view_rounded,
+        label: 'MODULES',
+        selectedColor: AppTheme.primary,
+      ),
+    ];
+
+    // Handshake: lead and org_admin (not members)
+    if (!user.isMember) {
+      items.add(const _NavItemData(
+        route: '/handshake/inbox',
+        icon: Icons.handshake_outlined,
+        label: 'HANDSHAKE',
+        selectedColor: AppTheme.warning,
+      ));
+    }
+
+    // Files: everyone
+    items.add(const _NavItemData(
+      route: '/files',
+      icon: Icons.folder_shared_outlined,
+      label: 'FILES',
+      selectedColor: AppTheme.purple,
+    ));
+
+    // Users: only org_admin
+    if (user.isOrgAdmin) {
+      items.add(const _NavItemData(
+        route: '/admin/users',
+        icon: Icons.people_outline_rounded,
+        label: 'USERS',
+        selectedColor: AppTheme.orange,
+      ));
+    }
+
+    return items;
+  }
+
+  List<String> _getRoutes(dynamic user) {
+    return _getNavItems(user).map((item) => item.route).toList();
   }
 
   void _onTap(int index, dynamic user) {
@@ -46,6 +108,8 @@ class _MainShellState extends ConsumerState<MainShell> {
     final userAsync = ref.watch(currentUserProvider);
     final user = userAsync.valueOrNull;
 
+    final navItems = _getNavItems(user);
+
     // Sync tab index with current route dynamically
     final idxStr = _locationToIndex(context, user);
     final routeIdx = int.parse(idxStr);
@@ -54,11 +118,6 @@ class _MainShellState extends ConsumerState<MainShell> {
         if (mounted) setState(() => _currentIndex = routeIdx);
       });
     }
-
-    final unreadAsync = user != null
-        ? ref.watch(unreadCountProvider(user.uid))
-        : const AsyncData(0);
-    final unreadCount = unreadAsync.valueOrNull ?? 0;
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -72,34 +131,17 @@ class _MainShellState extends ConsumerState<MainShell> {
           child: SizedBox(
             height: 60,
             child: Row(
-              children: [
-                _NavItem(
-                  icon: Icons.grid_view_rounded,
-                  label: 'MODULES',
-                  selected: _currentIndex == 0,
-                  onTap: () => _onTap(0, user),
-                ),
-                if (user == null || !user.isMember)
-                  _NavItem(
-                    icon: Icons.swap_horiz_rounded,
-                    label: 'HANDSHAKE',
-                    selected: _currentIndex == 1,
-                    onTap: () => _onTap(1, user),
-                  ),
-                _NavItem(
-                  icon: Icons.folder_outlined,
-                  label: 'FILES',
-                  selected: _currentIndex == (user?.isMember == true ? 1 : 2),
-                  onTap: () => _onTap(user?.isMember == true ? 1 : 2, user),
-                ),
-                _NavItem(
-                  icon: Icons.notifications_outlined,
-                  label: 'ALERTS',
-                  selected: _currentIndex == (user?.isMember == true ? 2 : 3),
-                  onTap: () => _onTap(user?.isMember == true ? 2 : 3, user),
-                  badge: unreadCount,
-                ),
-              ],
+              children: navItems.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                return _NavItem(
+                  icon: item.icon,
+                  label: item.label,
+                  selected: _currentIndex == index,
+                  onTap: () => _onTap(index, user),
+                  selectedColor: item.selectedColor,
+                );
+              }).toList(),
             ),
           ),
         ),
@@ -113,19 +155,20 @@ class _NavItem extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  final int badge;
+  final Color? selectedColor;
 
   const _NavItem({
     required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
-    this.badge = 0,
+    this.selectedColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppTheme.primary : AppTheme.textMuted;
+    final activeColor = selectedColor ?? AppTheme.primary;
+    final color = selected ? activeColor : AppTheme.textMuted;
 
     return Expanded(
       child: InkWell(
@@ -141,34 +184,12 @@ class _NavItem extends StatelessWidget {
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: selected
-                        ? AppTheme.primary.withAlpha(26)
+                        ? activeColor.withAlpha(26)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(icon, color: color, size: 20),
                 ),
-                if (badge > 0)
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: AppTheme.danger,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                      child: Text(
-                        badge > 9 ? '9+' : '$badge',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
               ],
             ),
             const SizedBox(height: 3),

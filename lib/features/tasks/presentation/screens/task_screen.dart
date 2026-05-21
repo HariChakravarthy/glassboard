@@ -136,6 +136,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
     String priority = AppConstants.priorityMedium;
     DateTime? dueDate;
     final allUsers = ref.read(orgUsersProvider).valueOrNull ?? [];
+    bool isSubmitting = false;
 
     // Filter all members in the organization
     final availableMembers = allUsers.where((u) {
@@ -187,7 +188,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                       ),
                     )),
                   ],
-                  onChanged: (val) {
+                  onChanged: isSubmitting ? null : (val) {
                     if (val != null) {
                       setDState(() => selectedAssigneeId = val);
                     }
@@ -217,7 +218,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                           fontSize: 10, letterSpacing: 1,
                         )),
                       selected: priority == p,
-                      onSelected: (_) => setDState(() => priority = p),
+                      onSelected: isSubmitting ? null : (_) => setDState(() => priority = p),
                       selectedColor: color.withAlpha(31),
                       side: BorderSide(color: priority == p ? color : AppTheme.border),
                       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -226,7 +227,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextButton.icon(
-                  onPressed: () async {
+                  onPressed: isSubmitting ? null : () async {
                     final picked = await showDatePicker(
                       context: ctx,
                       initialDate: DateTime.now().add(const Duration(days: 3)),
@@ -244,23 +245,39 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('CANCEL'),
+            ),
             ElevatedButton(
-              onPressed: () async {
-                if (titleCtrl.text.trim().isEmpty) return;
-                await ref.read(moduleRepositoryProvider).createTask(TaskModel(
-                  id:          '',
-                  moduleId:    widget.moduleId,
-                  title:       titleCtrl.text.trim(),
-                  assignedTo:  selectedAssigneeId,
-                  priority:    priority,
-                  completed:   false,
-                  dueDate:     dueDate,
-                  description: descCtrl.text.trim(),
-                  createdAt:   DateTime.now(),
-                ));
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
+              onPressed: isSubmitting
+                ? null
+                : () async {
+                    if (isSubmitting) return;
+                    final title = titleCtrl.text.trim();
+                    if (title.isEmpty) return;
+                    final desc = descCtrl.text.trim();
+                    
+                    setDState(() => isSubmitting = true);
+                    // Pop the dialog immediately to prevent double-clicking and duplicates
+                    Navigator.pop(ctx);
+
+                    try {
+                      await ref.read(moduleRepositoryProvider).createTask(TaskModel(
+                        id:          '',
+                        moduleId:    widget.moduleId,
+                        title:       title,
+                        assignedTo:  selectedAssigneeId,
+                        priority:    priority,
+                        completed:   false,
+                        dueDate:     dueDate,
+                        description: desc,
+                        createdAt:   DateTime.now(),
+                      ));
+                    } catch (e) {
+                      debugPrint('Failed to create task: $e');
+                    }
+                  },
               child: const Text('ADD TASK'),
             ),
           ],

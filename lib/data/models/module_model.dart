@@ -26,6 +26,7 @@ class ModuleModel {
 
   bool get isComplete     => status == AppConstants.statusComplete;
   bool get isInProgress   => status == AppConstants.statusInProgress;
+  bool get isReview       => status == AppConstants.statusReview;
   bool get isNotStarted   => status == AppConstants.statusNotStarted;
 
   /// Delay color: green / amber / red based on progress

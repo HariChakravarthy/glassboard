@@ -32,7 +32,7 @@ final allModulesProvider = StreamProvider<List<ModuleModel>>((ref) {
   return ref.watch(moduleRepositoryProvider).watchAllModules(user.orgId);
 });
 
-final moduleDetailProvider = StreamProvider.family<ModuleModel?, String>((ref, id) {
+final moduleDetailProvider = StreamProvider.autoDispose.family<ModuleModel?, String>((ref, id) {
   final auth = ref.watch(authStateProvider).valueOrNull;
   if (auth == null) return Stream.value(null);
   return ref.watch(moduleRepositoryProvider).watchModule(id);
@@ -46,10 +46,18 @@ final moduleLiveProgressProvider = StreamProvider.family<double, String>((ref, i
 
 
 // ── Tasks ──────────────────────────────────────────────────────────
-final tasksProvider = StreamProvider.family<List<TaskModel>, String>((ref, moduleId) {
+final tasksProvider = StreamProvider.autoDispose.family<List<TaskModel>, String>((ref, moduleId) {
   final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
+  if (auth == null) return const Stream.empty();
   return ref.watch(moduleRepositoryProvider).watchTasks(moduleId);
+});
+
+final singleTaskProvider = StreamProvider.autoDispose.family<TaskModel?, String>((ref, moduleAndTaskId) {
+  final auth = ref.watch(authStateProvider).valueOrNull;
+  if (auth == null) return const Stream.empty();
+  final parts = moduleAndTaskId.split('_');
+  if (parts.length < 2) return Stream.value(null);
+  return ref.watch(moduleRepositoryProvider).watchTask(parts[0], parts[1]);
 });
 
 // ── Handshakes ─────────────────────────────────────────────────────

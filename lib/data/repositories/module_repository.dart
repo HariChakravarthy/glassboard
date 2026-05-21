@@ -104,6 +104,17 @@ class ModuleRepository {
     });
   }
 
+  Stream<TaskModel?> watchTask(String moduleId, String taskId) {
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.modulesCollection)
+          .doc(moduleId)
+          .collection(AppConstants.tasksSubcollection)
+          .doc(taskId)
+          .snapshots()
+          .map((s) => s.exists ? TaskModel.fromFirestore(s, moduleId) : null);
+    });
+  }
+
   Future<String> createTask(TaskModel task) async {
     final ref = await _db
         .collection(AppConstants.modulesCollection)
@@ -237,15 +248,17 @@ class ModuleRepository {
   // ── Task Comments ───────────────────────────────────────────────────
 
   Stream<List<Map<String, dynamic>>> watchTaskComments(String moduleId, String taskId) {
-    return _db
-        .collection(AppConstants.modulesCollection)
-        .doc(moduleId)
-        .collection(AppConstants.tasksSubcollection)
-        .doc(taskId)
-        .collection('comments')
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+    return retryOnPermissionDenied(() {
+      return _db
+          .collection(AppConstants.modulesCollection)
+          .doc(moduleId)
+          .collection(AppConstants.tasksSubcollection)
+          .doc(taskId)
+          .collection('comments')
+          .orderBy('createdAt', descending: false)
+          .snapshots()
+          .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+    });
   }
 
   Future<void> addTaskComment({
@@ -272,15 +285,17 @@ class ModuleRepository {
   // ── Task Attachments ────────────────────────────────────────────────
 
   Stream<List<Map<String, dynamic>>> watchTaskAttachments(String moduleId, String taskId) {
-    return _db
-        .collection(AppConstants.modulesCollection)
-        .doc(moduleId)
-        .collection(AppConstants.tasksSubcollection)
-        .doc(taskId)
-        .collection('attachments')
-        .orderBy('uploadedAt', descending: true)
-        .snapshots()
-        .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+    return retryOnPermissionDenied(() {
+      return _db
+          .collection(AppConstants.modulesCollection)
+          .doc(moduleId)
+          .collection(AppConstants.tasksSubcollection)
+          .doc(taskId)
+          .collection('attachments')
+          .orderBy('uploadedAt', descending: true)
+          .snapshots()
+          .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+    });
   }
 
   Future<void> addTaskAttachment({

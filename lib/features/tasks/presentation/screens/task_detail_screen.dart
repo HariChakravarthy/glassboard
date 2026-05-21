@@ -14,17 +14,23 @@ import '../../../../data/models/task_model.dart';
 
 // ── Providers ────────────────────────────────────────────────────────
 final _commentsProvider =
-    StreamProvider.family<List<Map<String, dynamic>>, ({String moduleId, String taskId})>(
-  (ref, args) => ref
-      .watch(moduleRepositoryProvider)
-      .watchTaskComments(args.moduleId, args.taskId),
+    StreamProvider.autoDispose.family<List<Map<String, dynamic>>, ({String moduleId, String taskId})>(
+  (ref, args) {
+    ref.watch(authStateProvider);
+    return ref
+        .watch(moduleRepositoryProvider)
+        .watchTaskComments(args.moduleId, args.taskId);
+  },
 );
 
 final _attachmentsProvider =
-    StreamProvider.family<List<Map<String, dynamic>>, ({String moduleId, String taskId})>(
-  (ref, args) => ref
-      .watch(moduleRepositoryProvider)
-      .watchTaskAttachments(args.moduleId, args.taskId),
+    StreamProvider.autoDispose.family<List<Map<String, dynamic>>, ({String moduleId, String taskId})>(
+  (ref, args) {
+    ref.watch(authStateProvider);
+    return ref
+        .watch(moduleRepositoryProvider)
+        .watchTaskAttachments(args.moduleId, args.taskId);
+  },
 );
 
 // ── Screen ───────────────────────────────────────────────────────────
@@ -114,7 +120,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final task         = widget.task;
+    final taskAsync    = ref.watch(singleTaskProvider('${widget.task.moduleId}_${widget.task.id}'));
+    final task         = taskAsync.valueOrNull ?? widget.task;
     final usersAsync   = ref.watch(orgUsersProvider);
     final currentUser  = ref.watch(currentUserProvider).valueOrNull;
     final canEdit      = currentUser?.isLead == true || currentUser?.isOrgAdmin == true;

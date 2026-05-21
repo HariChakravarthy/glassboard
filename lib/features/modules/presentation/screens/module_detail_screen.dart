@@ -341,6 +341,7 @@ class ModuleDetailScreen extends ConsumerWidget {
     String priority = AppConstants.priorityMedium;
     DateTime? dueDate;
     String? selectedAssigneeId = user.uid;
+    bool isSubmitting = false;
 
     await showDialog(
       context: context,
@@ -393,7 +394,7 @@ class ModuleDetailScreen extends ConsumerWidget {
                         if (selectedAssigneeId == null || !members.any((m) => m.uid == selectedAssigneeId)) {
                           selectedAssigneeId = members.first.uid;
                         }
-
+ 
                         return DropdownButtonFormField<String>(
                           dropdownColor: AppTheme.surface,
                           initialValue: selectedAssigneeId,
@@ -409,7 +410,7 @@ class ModuleDetailScreen extends ConsumerWidget {
                               child: Text('${u.name}$tech', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
                             );
                           }).toList(),
-                          onChanged: (val) => setDState(() => selectedAssigneeId = val),
+                          onChanged: isSubmitting ? null : (val) => setDState(() => selectedAssigneeId = val),
                         );
                       },
                       loading: () => const LinearProgressIndicator(color: AppTheme.primary),
@@ -441,7 +442,7 @@ class ModuleDetailScreen extends ConsumerWidget {
                           fontSize: 10, letterSpacing: 1,
                         )),
                       selected: priority == p,
-                      onSelected: (_) => setDState(() => priority = p),
+                      onSelected: isSubmitting ? null : (_) => setDState(() => priority = p),
                       selectedColor: color.withAlpha(31),
                       side: BorderSide(color: priority == p ? color : AppTheme.border),
                       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -450,7 +451,7 @@ class ModuleDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 TextButton.icon(
-                  onPressed: () async {
+                  onPressed: isSubmitting ? null : () async {
                     final picked = await showDatePicker(
                       context: ctx,
                       initialDate: DateTime.now().add(const Duration(days: 3)),
@@ -485,7 +486,7 @@ class ModuleDetailScreen extends ConsumerWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
               child: const Text('CANCEL', style: TextStyle(color: AppTheme.textMuted)),
             ),
             ElevatedButton(
@@ -493,30 +494,41 @@ class ModuleDetailScreen extends ConsumerWidget {
                 backgroundColor: AppTheme.primary,
                 foregroundColor: AppTheme.bg,
               ),
-              onPressed: () async {
-                if (titleCtrl.text.trim().isEmpty) return;
-                if (selectedAssigneeId == null) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(
-                      content: Text('Cannot create task: No member assigned'),
-                      backgroundColor: AppTheme.danger,
-                    ),
-                  );
-                  return;
-                }
-                await ref.read(moduleRepositoryProvider).createTask(TaskModel(
-                  id:          '',
-                  moduleId:    moduleId,
-                  title:       titleCtrl.text.trim(),
-                  assignedTo:  selectedAssigneeId!,
-                  priority:    priority,
-                  completed:   false,
-                  dueDate:     dueDate,
-                  description: descCtrl.text.trim(),
-                  createdAt:   DateTime.now(),
-                ));
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
+              onPressed: isSubmitting
+                ? null
+                : () async {
+                    if (isSubmitting) return;
+                    final title = titleCtrl.text.trim();
+                    if (title.isEmpty) return;
+                    if (selectedAssigneeId == null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('Cannot create task: No member assigned'),
+                          backgroundColor: AppTheme.danger,
+                        ),
+                      );
+                      return;
+                    }
+                    setDState(() => isSubmitting = true);
+                    // Pop the dialog immediately to prevent double-clicking and duplicates
+                    Navigator.pop(ctx);
+
+                    try {
+                      await ref.read(moduleRepositoryProvider).createTask(TaskModel(
+                        id:          '',
+                        moduleId:    moduleId,
+                        title:       title,
+                        assignedTo:  selectedAssigneeId!,
+                        priority:    priority,
+                        completed:   false,
+                        dueDate:     dueDate,
+                        description: descCtrl.text.trim(),
+                        createdAt:   DateTime.now(),
+                      ));
+                    } catch (e) {
+                      debugPrint('Failed to create task: $e');
+                    }
+                  },
               child: const Text('ADD TASK'),
             ),
           ],

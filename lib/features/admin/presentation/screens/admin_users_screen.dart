@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/providers/app_providers.dart';
+import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../data/repositories/admin_repository.dart';
 import '../../../../data/models/user_model.dart';
@@ -16,12 +17,15 @@ class AdminUsersScreen extends ConsumerWidget {
     final usersAsync = ref.watch(orgUsersProvider);
     final modulesAsync = ref.watch(allModulesProvider);
     final modules = modulesAsync.valueOrNull ?? [];
+    final currentUserAsync = ref.watch(currentUserProvider);
+    final currentUser = currentUserAsync.valueOrNull;
+    final isAdmin = currentUser?.isOrgAdmin ?? false;
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      appBar: const GlassAppBar(
+      appBar: GlassAppBar(
         title: 'USER MANAGEMENT',
-        subtitle: 'ORG ADMIN',
+        subtitle: currentUser?.role.toUpperCase().replaceAll('_', ' ') ?? 'USERS',
         accentColor: AppTheme.orange,
       ),
       body: usersAsync.when(
@@ -44,6 +48,7 @@ class AdminUsersScreen extends ConsumerWidget {
               user: users[i],
               modules: modules,
               adminRepo: ref.read(adminRepositoryProvider),
+              isAdmin: isAdmin,
             ).animate().fadeIn(delay: (i * 50).ms),
           );
         },
@@ -56,11 +61,13 @@ class _UserCard extends StatelessWidget {
   final UserModel user;
   final List modules;
   final AdminRepository adminRepo;
+  final bool isAdmin;
 
   const _UserCard({
     required this.user,
     required this.modules,
     required this.adminRepo,
+    required this.isAdmin,
   });
 
   Color _roleColor(String role) => switch (role) {
@@ -154,7 +161,18 @@ class _UserCard extends StatelessWidget {
                     const Text('ROLE', style: TextStyle(
                       color: AppTheme.textDim, fontSize: 9, letterSpacing: 2, fontFamily: 'Space Mono')),
                     const SizedBox(height: 6),
-                    _RoleDropdown(user: user, adminRepo: adminRepo),
+                    isAdmin
+                        ? _RoleDropdown(user: user, adminRepo: adminRepo)
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: AppTheme.bg,
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                            child: Text(user.role.toUpperCase(),
+                                style: const TextStyle(fontSize: 10, letterSpacing: 1, fontFamily: 'Space Mono', color: AppTheme.textPrimary)),
+                          ),
                   ],
                 ),
               ),
@@ -167,7 +185,21 @@ class _UserCard extends StatelessWidget {
                     const Text('MODULE', style: TextStyle(
                       color: AppTheme.textDim, fontSize: 9, letterSpacing: 2, fontFamily: 'Space Mono')),
                     const SizedBox(height: 6),
-                    _ModuleDropdown(user: user, modules: modules, adminRepo: adminRepo),
+                    isAdmin
+                        ? _ModuleDropdown(user: user, modules: modules, adminRepo: adminRepo)
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: AppTheme.bg,
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                            child: Text(
+                              modules.firstWhere((m) => m.id == user.moduleId, orElse: () => null)?.name ?? '— None —',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10, letterSpacing: 0.5, color: AppTheme.textPrimary),
+                            ),
+                          ),
                   ],
                 ),
               ),

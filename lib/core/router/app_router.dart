@@ -48,7 +48,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
           GoRoute(path: '/handshake/inbox', builder: (_, __) => const HandshakeInboxScreen()),
           GoRoute(path: '/files', builder: (_, __) => const FilesScreen()),
-          GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
+          GoRoute(path: '/admin/users', builder: (_, __) => const AdminUsersScreen()),
         ],
       ),
 
@@ -80,7 +80,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/audit', builder: (_, __) => const AuditLogScreen()),
-      GoRoute(path: '/admin/users', builder: (_, __) => const AdminUsersScreen()),
+      GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
       GoRoute(
         path: '/files/:id/preview',
         builder: (_, state) {

@@ -100,7 +100,7 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildBody(BuildContext context, WidgetRef ref, user, List<ModuleModel> modules) {
+    Widget _buildBody(BuildContext context, WidgetRef ref, user, List<ModuleModel> modules) {
     // Filter: non-admins only see their module
     final visibleModules = user.isOrgAdmin
         ? modules
@@ -129,10 +129,6 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
         ],
-
-        // ── Quick Actions ────────────────────────────────────────────
-        _QuickActions(user: user).animate().fadeIn(delay: 100.ms),
-        const SizedBox(height: 24),
 
         // ── Modules Grid / List ──────────────────────────────────────
         SectionHeader(
@@ -176,17 +172,20 @@ class _StatsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final complete   = modules.where((m) => m.isComplete).length;
+    final review     = modules.where((m) => m.isReview).length;
     final inProgress = modules.where((m) => m.isInProgress).length;
     final notStarted = modules.where((m) => m.isNotStarted).length;
 
     return Row(
       children: [
         _Stat(value: '${modules.length}', label: 'TOTAL', color: AppTheme.primary),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         _Stat(value: '$complete', label: 'COMPLETE', color: AppTheme.success),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
+        _Stat(value: '$review', label: 'REVIEW', color: AppTheme.purple),
+        const SizedBox(width: 8),
         _Stat(value: '$inProgress', label: 'IN PROGRESS', color: AppTheme.warning),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         _Stat(value: '$notStarted', label: 'NOT STARTED', color: AppTheme.textMuted),
       ],
     );
@@ -203,7 +202,7 @@ class _Stat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
         borderLeftColor: color,
         borderLeftWidth: 3,
         child: Column(
@@ -220,62 +219,6 @@ class _Stat extends StatelessWidget {
               )),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Quick Actions ──────────────────────────────────────────────────
-class _QuickActions extends StatelessWidget {
-  final dynamic user;
-  const _QuickActions({required this.user});
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      if (user.isLead || user.isOrgAdmin)
-        _Action(icon: Icons.handshake_outlined, label: 'INBOX',
-            color: AppTheme.warning, onTap: () => context.push('/handshake/inbox')),
-      _Action(icon: Icons.folder_shared_outlined, label: 'FILES',
-          color: AppTheme.purple, onTap: () => context.push('/files')),
-      if (user.isOrgAdmin)
-        _Action(icon: Icons.people_outline_rounded, label: 'USERS',
-            color: AppTheme.orange, onTap: () => context.push('/admin/users')),
-      if (user.isOrgAdmin)
-        _Action(icon: Icons.receipt_long_outlined, label: 'AUDIT',
-            color: AppTheme.success, onTap: () => context.push('/audit')),
-    ];
-
-    if (actions.isEmpty) return const SizedBox();
-    // Show max 4 in a row, wrap if more
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: actions.map((a) => SizedBox(width: (MediaQuery.of(context).size.width - 60) / 4, child: a)).toList(),
-    );
-  }
-}
-
-class _Action extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _Action({required this.icon, required this.label, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
-          Text(label,
-            style: TextStyle(color: color, fontSize: 9, letterSpacing: 2, fontFamily: 'Space Mono')),
-        ],
       ),
     );
   }
