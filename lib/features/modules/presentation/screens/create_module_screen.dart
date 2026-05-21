@@ -8,7 +8,6 @@ import '../../../../core/providers/app_providers.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../data/models/module_model.dart';
 import '../../../../shared/widgets/shared_widgets.dart';
-import '../../../admin/presentation/screens/admin_users_screen.dart';
 
 class CreateModuleScreen extends ConsumerStatefulWidget {
   const CreateModuleScreen({super.key});
@@ -135,7 +134,7 @@ class _CreateModuleScreenState extends ConsumerState<CreateModuleScreen> {
             // Assign Lead
             const _Label('ASSIGN LEAD'),
             const SizedBox(height: 8),
-            ref.watch(allUsersProvider).when(
+            ref.watch(orgUsersProvider).when(
               data: (users) {
                 final leads = users.where((u) => u.isLead || u.isOrgAdmin).toList();
                 if (leads.isEmpty) {
@@ -150,10 +149,15 @@ class _CreateModuleScreenState extends ConsumerState<CreateModuleScreen> {
                     prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
                   ),
                   hint: const Text('Select a Module Lead', style: TextStyle(color: AppTheme.textDim)),
-                  items: leads.map((u) => DropdownMenuItem(
-                    value: u.uid,
-                    child: Text('${u.name} (${u.role.replaceAll('role_', '').replaceAll('module_', '').toUpperCase()})'),
-                  )).toList(),
+                  items: leads.map((u) {
+                    final roleLabel = u.isOrgAdmin ? 'ORG ADMIN' : 'LEAD';
+                    final tech = (u.techRole ?? '').isNotEmpty ? '  •  ${u.techRole}' : '';
+                    return DropdownMenuItem(
+                      value: u.uid,
+                      child: Text('${u.name}$tech  ($roleLabel)',
+                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                    );
+                  }).toList(),
                   onChanged: (val) => setState(() => _selectedLeadId = val),
                   validator: (v) => v == null ? 'Lead assignment is required' : null,
                 );

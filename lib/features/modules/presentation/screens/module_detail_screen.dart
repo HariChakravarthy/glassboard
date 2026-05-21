@@ -130,75 +130,97 @@ class ModuleDetailScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 8),
                   ],
-                  OutlinedButton.icon(
-                    onPressed: () => context.push('/modules/$moduleId/tasks'),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                    label: const Text('MANAGE'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      textStyle: const TextStyle(fontSize: 10, letterSpacing: 1.5),
+                  if (userAsync.valueOrNull?.isLead == true || userAsync.valueOrNull?.isOrgAdmin == true) ...[
+                    OutlinedButton.icon(
+                      onPressed: () => context.push('/modules/$moduleId/tasks'),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                      label: const Text('MANAGE'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        textStyle: const TextStyle(fontSize: 10, letterSpacing: 1.5),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 12),
 
               tasksAsync.when(
                 data: (tasks) {
-                  if (tasks.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.checklist_rounded,
-                      title: 'No tasks yet',
-                      subtitle: 'Tap Manage to add checklist items',
+                  final filteredTasks = userAsync.valueOrNull?.isMember == true
+                      ? tasks.where((t) => t.assignedTo == userAsync.valueOrNull?.uid).toList()
+                      : tasks;
+
+                  if (filteredTasks.isEmpty) {
+                    return Column(
+                      children: [
+                        EmptyState(
+                          icon: Icons.checklist_rounded,
+                          title: 'No tasks yet',
+                          subtitle: userAsync.valueOrNull?.isMember == true
+                              ? 'No tasks assigned to you yet.'
+                              : 'Tap ADD TASK or MANAGE to add checklist items',
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                     );
                   }
                   return Column(
-                    children: tasks.asMap().entries.map((e) {
-                      final task = e.value;
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surface,
-                          border: Border.all(color: AppTheme.border),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 4),
-                          leading: GestureDetector(
-                            onTap: () => ref.read(moduleRepositoryProvider)
-                                .toggleTaskCompletion(task),
-                            child: AnimatedContainer(
-                              duration: 200.ms,
-                              width: 22, height: 22,
-                              decoration: BoxDecoration(
-                                color: task.completed
-                                    ? AppTheme.primary
-                                    : Colors.transparent,
-                                border: Border.all(
-                                  color: task.completed
-                                      ? AppTheme.primary
-                                      : AppTheme.border2,
+                    children: [
+                      ...filteredTasks.asMap().entries.map((e) {
+                        final task = e.value;
+                        return InkWell(
+                          onTap: () => context.push(
+                            '/modules/$moduleId/tasks/${task.id}/detail',
+                            extra: task,
+                          ),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surface,
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 4),
+                              leading: GestureDetector(
+                                onTap: () => ref.read(moduleRepositoryProvider)
+                                    .toggleTaskCompletion(task),
+                                child: AnimatedContainer(
+                                  duration: 200.ms,
+                                  width: 22, height: 22,
+                                  decoration: BoxDecoration(
+                                    color: task.completed
+                                        ? AppTheme.primary
+                                        : Colors.transparent,
+                                    border: Border.all(
+                                      color: task.completed
+                                        ? AppTheme.primary
+                                        : AppTheme.border2,
+                                    ),
+                                  ),
+                                  child: task.completed
+                                      ? const Icon(Icons.check, size: 14, color: AppTheme.bg)
+                                      : null,
                                 ),
                               ),
-                              child: task.completed
-                                  ? const Icon(Icons.check, size: 14, color: AppTheme.bg)
-                                  : null,
+                              title: Text(task.title,
+                                style: TextStyle(
+                                  color: task.completed
+                                      ? AppTheme.textMuted
+                                      : AppTheme.textPrimary,
+                                  fontSize: 13,
+                                  decoration: task.completed
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                )),
+                              trailing: PriorityBadge(priority: task.priority),
                             ),
                           ),
-                          title: Text(task.title,
-                            style: TextStyle(
-                              color: task.completed
-                                  ? AppTheme.textMuted
-                                  : AppTheme.textPrimary,
-                              fontSize: 13,
-                              decoration: task.completed
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            )),
-                          trailing: PriorityBadge(priority: task.priority),
-                        ),
-                      ).animate().fadeIn(delay: (e.key * 50).ms);
-                    }).toList(),
+                        ).animate().fadeIn(delay: (e.key * 50).ms);
+                      }),
+                      const SizedBox(height: 12),
+                    ],
                   );
                 },
                 loading: () => const LoadingCardSkeleton(),
@@ -318,6 +340,7 @@ class ModuleDetailScreen extends ConsumerWidget {
     final descCtrl  = TextEditingController();
     String priority = AppConstants.priorityMedium;
     DateTime? dueDate;
+    String? selectedAssigneeId = user.uid;
 
     await showDialog(
       context: context,
@@ -351,6 +374,48 @@ class ModuleDetailScreen extends ConsumerWidget {
                     focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppTheme.primary)),
                   ),
                   maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                Text('ASSIGNEE', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppTheme.textMuted)),
+                const SizedBox(height: 8),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final usersAsync = ref.watch(orgUsersProvider);
+                    return usersAsync.when(
+                      data: (users) {
+                        final members = users.where((u) => u.isMember).toList();
+                        if (members.isEmpty) {
+                          return const Text('No Members registered in this organization yet.',
+                            style: TextStyle(color: AppTheme.textMuted, fontSize: 13));
+                        }
+                        
+                        // Default to the first member if not set
+                        if (selectedAssigneeId == null || !members.any((m) => m.uid == selectedAssigneeId)) {
+                          selectedAssigneeId = members.first.uid;
+                        }
+
+                        return DropdownButtonFormField<String>(
+                          dropdownColor: AppTheme.surface,
+                          initialValue: selectedAssigneeId,
+                          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                          decoration: const InputDecoration(
+                            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppTheme.border)),
+                            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppTheme.primary)),
+                          ),
+                          items: members.map((u) {
+                            final tech = (u.techRole ?? '').isNotEmpty ? '  •  ${u.techRole}' : '';
+                            return DropdownMenuItem(
+                              value: u.uid,
+                              child: Text('${u.name}$tech', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                            );
+                          }).toList(),
+                          onChanged: (val) => setDState(() => selectedAssigneeId = val),
+                        );
+                      },
+                      loading: () => const LinearProgressIndicator(color: AppTheme.primary),
+                      error: (e, _) => Text('Error: $e', style: const TextStyle(color: AppTheme.danger, fontSize: 11)),
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
                 Text('PRIORITY', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppTheme.textMuted)),
@@ -430,11 +495,20 @@ class ModuleDetailScreen extends ConsumerWidget {
               ),
               onPressed: () async {
                 if (titleCtrl.text.trim().isEmpty) return;
+                if (selectedAssigneeId == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cannot create task: No member assigned'),
+                      backgroundColor: AppTheme.danger,
+                    ),
+                  );
+                  return;
+                }
                 await ref.read(moduleRepositoryProvider).createTask(TaskModel(
                   id:          '',
                   moduleId:    moduleId,
                   title:       titleCtrl.text.trim(),
-                  assignedTo:  user.uid,
+                  assignedTo:  selectedAssigneeId!,
                   priority:    priority,
                   completed:   false,
                   dueDate:     dueDate,

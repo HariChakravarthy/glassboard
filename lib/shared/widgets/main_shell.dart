@@ -17,26 +17,37 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
 
-  static const _routes = ['/dashboard', '/handshake/inbox', '/files', '/notifications'];
-
-  void _onTap(int index) {
-    if (_currentIndex == index) return;
-    setState(() => _currentIndex = index);
-    context.go(_routes[index]);
+  List<String> _getRoutes(dynamic user) {
+    if (user != null && user.isMember) {
+      return const ['/dashboard', '/files', '/notifications'];
+    }
+    return const ['/dashboard', '/handshake/inbox', '/files', '/notifications'];
   }
 
-  String _locationToIndex(BuildContext context) {
+  void _onTap(int index, dynamic user) {
+    final routes = _getRoutes(user);
+    if (_currentIndex == index) return;
+    setState(() => _currentIndex = index);
+    context.go(routes[index]);
+  }
+
+  String _locationToIndex(BuildContext context, dynamic user) {
     final loc = GoRouterState.of(context).matchedLocation;
-    if (loc.startsWith('/handshake')) return '1';
-    if (loc.startsWith('/files')) return '2';
-    if (loc.startsWith('/notifications')) return '3';
-    return '0'; // dashboard
+    final routes = _getRoutes(user);
+    final idx = routes.indexWhere((r) {
+      if (r == '/handshake/inbox') return loc.startsWith('/handshake');
+      return loc.startsWith(r);
+    });
+    return idx >= 0 ? idx.toString() : '0';
   }
 
   @override
   Widget build(BuildContext context) {
-    // Sync tab index with current route
-    final idxStr = _locationToIndex(context);
+    final userAsync = ref.watch(currentUserProvider);
+    final user = userAsync.valueOrNull;
+
+    // Sync tab index with current route dynamically
+    final idxStr = _locationToIndex(context, user);
     final routeIdx = int.parse(idxStr);
     if (routeIdx != _currentIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -44,8 +55,6 @@ class _MainShellState extends ConsumerState<MainShell> {
       });
     }
 
-    final userAsync = ref.watch(currentUserProvider);
-    final user = userAsync.valueOrNull;
     final unreadAsync = user != null
         ? ref.watch(unreadCountProvider(user.uid))
         : const AsyncData(0);
@@ -68,25 +77,26 @@ class _MainShellState extends ConsumerState<MainShell> {
                   icon: Icons.grid_view_rounded,
                   label: 'MODULES',
                   selected: _currentIndex == 0,
-                  onTap: () => _onTap(0),
+                  onTap: () => _onTap(0, user),
                 ),
-                _NavItem(
-                  icon: Icons.swap_horiz_rounded,
-                  label: 'HANDSHAKE',
-                  selected: _currentIndex == 1,
-                  onTap: () => _onTap(1),
-                ),
+                if (user == null || !user.isMember)
+                  _NavItem(
+                    icon: Icons.swap_horiz_rounded,
+                    label: 'HANDSHAKE',
+                    selected: _currentIndex == 1,
+                    onTap: () => _onTap(1, user),
+                  ),
                 _NavItem(
                   icon: Icons.folder_outlined,
                   label: 'FILES',
-                  selected: _currentIndex == 2,
-                  onTap: () => _onTap(2),
+                  selected: _currentIndex == (user?.isMember == true ? 1 : 2),
+                  onTap: () => _onTap(user?.isMember == true ? 1 : 2, user),
                 ),
                 _NavItem(
                   icon: Icons.notifications_outlined,
                   label: 'ALERTS',
-                  selected: _currentIndex == 3,
-                  onTap: () => _onTap(3),
+                  selected: _currentIndex == (user?.isMember == true ? 2 : 3),
+                  onTap: () => _onTap(user?.isMember == true ? 2 : 3, user),
                   badge: unreadCount,
                 ),
               ],

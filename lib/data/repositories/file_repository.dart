@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 import '../models/file_model.dart';
-
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/firestore_retry.dart';
 
 class FileRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -114,39 +114,45 @@ class FileRepository {
 
   Stream<List<FileModel>> watchModuleFiles(String orgId, List<String> moduleIds) {
     if (moduleIds.isEmpty || orgId.isEmpty) return Stream.value([]);
-    return _db.collection(AppConstants.filesCollection)
-        .where('orgId', isEqualTo: orgId)
-        .snapshots()
-        .map((s) {
-          final list = s.docs
-              .map(FileModel.fromFirestore)
-              .where((f) => f.moduleScope.any((m) => moduleIds.contains(m)))
-              .toList();
-          list.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
-          return list;
-        });
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.filesCollection)
+          .where('orgId', isEqualTo: orgId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs
+                .map(FileModel.fromFirestore)
+                .where((f) => f.moduleScope.any((m) => moduleIds.contains(m)))
+                .toList();
+            list.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+            return list;
+          });
+    });
   }
 
   /// Admin-only — returns all files within organization
   Stream<List<FileModel>> watchAllFiles(String orgId) {
     if (orgId.isEmpty) return Stream.value([]);
-    return _db.collection(AppConstants.filesCollection)
-        .where('orgId', isEqualTo: orgId)
-        .snapshots()
-        .map((s) {
-          final list = s.docs.map(FileModel.fromFirestore).toList();
-          list.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
-          return list;
-        });
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.filesCollection)
+          .where('orgId', isEqualTo: orgId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs.map(FileModel.fromFirestore).toList();
+            list.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+            return list;
+          });
+    });
   }
 
   Stream<List<FileVersionModel>> watchVersions(String fileId) {
-    return _db.collection(AppConstants.filesCollection)
-        .doc(fileId)
-        .collection(AppConstants.versionsSubcollection)
-        .orderBy('modifiedAt', descending: true)
-        .snapshots()
-        .map((s) => s.docs.map(FileVersionModel.fromFirestore).toList());
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.filesCollection)
+          .doc(fileId)
+          .collection(AppConstants.versionsSubcollection)
+          .orderBy('modifiedAt', descending: true)
+          .snapshots()
+          .map((s) => s.docs.map(FileVersionModel.fromFirestore).toList());
+    });
   }
 
   Future<void> restoreVersion(

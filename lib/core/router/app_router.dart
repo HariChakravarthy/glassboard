@@ -9,6 +9,7 @@ import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/modules/presentation/screens/module_detail_screen.dart';
 import '../../features/modules/presentation/screens/create_module_screen.dart';
 import '../../features/tasks/presentation/screens/task_screen.dart';
+import '../../features/tasks/presentation/screens/task_detail_screen.dart';
 import '../../features/handshake/presentation/screens/handshake_inbox_screen.dart';
 import '../../features/handshake/presentation/screens/initiate_handshake_screen.dart';
 import '../../features/handshake/presentation/screens/handshake_detail_screen.dart';
@@ -60,6 +61,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/modules/:id/tasks',
         builder: (_, state) => TaskScreen(moduleId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/modules/:moduleId/tasks/:taskId/detail',
+        builder: (_, state) {
+          final task = state.extra as dynamic;
+          if (task == null) return const Scaffold(backgroundColor: Color(0xFF080B10));
+          return TaskDetailScreen(task: task);
+        },
       ),
       GoRoute(
         path: '/modules/:id/handshake/initiate',

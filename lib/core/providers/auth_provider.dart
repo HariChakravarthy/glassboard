@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/models/user_model.dart';
 
@@ -41,6 +42,7 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserModel?>> {
     required String role,
     String? orgName,
     String? inviteCode,
+    String? techRole,
   }) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _repo.registerWithEmail(
@@ -50,6 +52,7 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserModel?>> {
       role: role,
       orgName: orgName,
       inviteCode: inviteCode,
+      techRole: techRole,
     ));
   }
 
@@ -67,4 +70,13 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserModel?>> {
 final authNotifierProvider =
     StateNotifierProvider<AuthNotifier, AsyncValue<UserModel?>>((ref) {
   return AuthNotifier(ref.watch(authRepositoryProvider));
+});
+
+final organizationProvider = StreamProvider.family<Map<String, dynamic>?, String>((ref, orgId) {
+  if (orgId.isEmpty) return Stream.value(null);
+  return FirebaseFirestore.instance
+      .collection('organizations')
+      .doc(orgId)
+      .snapshots()
+      .map((snap) => snap.exists ? snap.data() : null);
 });

@@ -14,14 +14,21 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _formKey    = GlobalKey<FormState>();
-  final _nameCtrl   = TextEditingController();
-  final _emailCtrl  = TextEditingController();
-  final _passCtrl   = TextEditingController();
-  final _orgNameCtrl = TextEditingController();
+  final _formKey       = GlobalKey<FormState>();
+  final _nameCtrl      = TextEditingController();
+  final _emailCtrl     = TextEditingController();
+  final _passCtrl      = TextEditingController();
+  final _orgNameCtrl   = TextEditingController();
   final _inviteCodeCtrl = TextEditingController();
+  final _techRoleCtrl  = TextEditingController();
   String _role = AppConstants.roleMember;
   bool _obscure = true;
+
+  static const _techSuggestions = [
+    'Web Frontend', 'Web Backend', 'Full Stack',
+    'ML Engineer', 'Data Science', 'DevOps',
+    'Mobile Dev', 'UI/UX Design', 'QA / Testing',
+  ];
 
   @override
   void dispose() {
@@ -30,6 +37,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passCtrl.dispose();
     _orgNameCtrl.dispose();
     _inviteCodeCtrl.dispose();
+    _techRoleCtrl.dispose();
     super.dispose();
   }
 
@@ -42,6 +50,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       role: _role,
       orgName: _role == AppConstants.roleOrgAdmin ? _orgNameCtrl.text.trim() : null,
       inviteCode: _role != AppConstants.roleOrgAdmin ? _inviteCodeCtrl.text.trim() : null,
+      techRole: _role != AppConstants.roleOrgAdmin ? _techRoleCtrl.text.trim() : null,
     );
     final state = ref.read(authNotifierProvider);
     if (state.hasError && mounted) {
@@ -127,6 +136,43 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       validator: (v) => v == null || v.trim().length != 6
                           ? '6-character Invite Code is required' : null)
                       .animate().fadeIn(duration: 200.ms),
+                  const SizedBox(height: 14),
+                  // Tech role field
+                  TextFormField(
+                    controller: _techRoleCtrl,
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                    decoration: const InputDecoration(
+                      labelText: 'Your Tech Role (e.g. ML Engineer)',
+                      prefixIcon: Icon(Icons.code_rounded, size: 18),
+                    ),
+                  ).animate().fadeIn(duration: 200.ms),
+                  const SizedBox(height: 10),
+                  // Quick suggestion chips
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _techSuggestions.map((s) {
+                      final sel = _techRoleCtrl.text == s;
+                      return GestureDetector(
+                        onTap: () => setState(() => _techRoleCtrl.text = s),
+                        child: AnimatedContainer(
+                          duration: 150.ms,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: sel ? AppTheme.primary.withAlpha(30) : AppTheme.surface,
+                            border: Border.all(
+                              color: sel ? AppTheme.primary : AppTheme.border),
+                          ),
+                          child: Text(s,
+                            style: TextStyle(
+                              color: sel ? AppTheme.primary : AppTheme.textMuted,
+                              fontSize: 10, letterSpacing: 0.8,
+                              fontFamily: 'Space Mono',
+                            )),
+                        ),
+                      );
+                    }).toList(),
+                  ).animate().fadeIn(duration: 250.ms),
                 ],
 
                 const SizedBox(height: 32),

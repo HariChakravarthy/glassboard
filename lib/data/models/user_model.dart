@@ -10,6 +10,7 @@ class UserModel {
   final String? moduleId;
   final String? fcmToken;
   final String? photoUrl;
+  final String? techRole;   // e.g. "Web Frontend", "ML Engineer"
   final DateTime createdAt;
 
   const UserModel({
@@ -21,6 +22,7 @@ class UserModel {
     this.moduleId,
     this.fcmToken,
     this.photoUrl,
+    this.techRole,
     required this.createdAt,
   });
 
@@ -39,6 +41,7 @@ class UserModel {
       moduleId:  d['moduleId'],
       fcmToken:  d['fcmToken'],
       photoUrl:  d['photoUrl'],
+      techRole:  d['techRole'],
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -52,12 +55,13 @@ class UserModel {
     'moduleId':  moduleId,
     'fcmToken':  fcmToken,
     'photoUrl':  photoUrl,
+    'techRole':  techRole,
     'createdAt': Timestamp.fromDate(createdAt),
   };
 
   UserModel copyWith({
     String? name, String? role, String? orgId, String? moduleId,
-    String? fcmToken, String? photoUrl,
+    String? fcmToken, String? photoUrl, String? techRole,
   }) =>
     UserModel(
       uid:       uid,
@@ -68,6 +72,7 @@ class UserModel {
       moduleId:  moduleId ?? this.moduleId,
       fcmToken:  fcmToken ?? this.fcmToken,
       photoUrl:  photoUrl ?? this.photoUrl,
+      techRole:  techRole ?? this.techRole,
       createdAt: createdAt,
     );
 }

@@ -46,6 +46,7 @@ class AuthRepository {
     required String role,
     String? orgName,
     String? inviteCode,
+    String? techRole,
   }) async {
     String finalOrgId = '';
     String? orgCode;
@@ -86,6 +87,7 @@ class AuthRepository {
       email:     email,
       role:      role,
       orgId:     finalOrgId,
+      techRole:  role != AppConstants.roleOrgAdmin ? techRole : null,
       createdAt: DateTime.now(),
     );
     await _db.collection(AppConstants.usersCollection)

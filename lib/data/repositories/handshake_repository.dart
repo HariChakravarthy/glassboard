@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/handshake_model.dart';
 import '../models/audit_model.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/firestore_retry.dart';
 
 class HandshakeRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -108,43 +109,55 @@ class HandshakeRepository {
 
   // ── Streams ────────────────────────────────────────────────────────
 
-  Stream<List<HandshakeModel>> watchIncomingHandshakes(String moduleId) {
-    return _db.collection(AppConstants.handshakesCollection)
-        .where('toModule', isEqualTo: moduleId)
-        .where('status', isEqualTo: AppConstants.handshakePending)
-        .snapshots()
-        .map((s) {
-          final list = s.docs.map(HandshakeModel.fromFirestore).toList();
-          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          return list;
-        });
+  Stream<List<HandshakeModel>> watchIncomingHandshakes(String orgId, String moduleId) {
+    if (orgId.isEmpty) return Stream.value([]);
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.handshakesCollection)
+          .where('orgId', isEqualTo: orgId)
+          .where('toModule', isEqualTo: moduleId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs
+                .map(HandshakeModel.fromFirestore)
+                .where((h) => h.status == AppConstants.handshakePending)
+                .toList();
+            list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            return list;
+          });
+    });
   }
 
-  Stream<List<HandshakeModel>> watchModuleHandshakes(String moduleId) {
-    // All handshakes sent OR received by this module
-    return _db.collection(AppConstants.handshakesCollection)
-        .where(Filter.or(
-          Filter('fromModule', isEqualTo: moduleId),
-          Filter('toModule', isEqualTo: moduleId),
-        ))
-        .snapshots()
-        .map((s) {
-          final list = s.docs.map(HandshakeModel.fromFirestore).toList();
-          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          return list;
-        });
+  Stream<List<HandshakeModel>> watchModuleHandshakes(String orgId, String moduleId) {
+    if (orgId.isEmpty) return Stream.value([]);
+    // Query organization handshakes and filter by fromModule or toModule client-side
+    // to avoid requiring a composite Firestore index on Filter.or()
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.handshakesCollection)
+          .where('orgId', isEqualTo: orgId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs
+                .map(HandshakeModel.fromFirestore)
+                .where((h) => h.fromModule == moduleId || h.toModule == moduleId)
+                .toList();
+            list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            return list;
+          });
+    });
   }
 
   Stream<List<HandshakeModel>> watchAllHandshakes(String orgId) {
     if (orgId.isEmpty) return Stream.value([]);
-    return _db.collection(AppConstants.handshakesCollection)
-        .where('orgId', isEqualTo: orgId)
-        .snapshots()
-        .map((s) {
-          final list = s.docs.map(HandshakeModel.fromFirestore).toList();
-          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          return list;
-        });
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.handshakesCollection)
+          .where('orgId', isEqualTo: orgId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs.map(HandshakeModel.fromFirestore).toList();
+            list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            return list;
+          });
+    });
   }
 
   Future<HandshakeModel> getHandshake(String id) async {

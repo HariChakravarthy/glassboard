@@ -8,22 +8,12 @@ import '../../../../data/repositories/admin_repository.dart';
 import '../../../../data/models/user_model.dart';
 import '../../../../shared/widgets/shared_widgets.dart';
 
-import '../../../../core/providers/auth_provider.dart';
-
-final adminRepositoryProvider = Provider<AdminRepository>((_) => AdminRepository());
-
-final allUsersProvider = StreamProvider<List<UserModel>>((ref) {
-  final user = ref.watch(currentUserProvider).valueOrNull;
-  if (user == null) return Stream.value([]);
-  return ref.watch(adminRepositoryProvider).watchAllUsers(user.orgId);
-});
-
 class AdminUsersScreen extends ConsumerWidget {
   const AdminUsersScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final usersAsync = ref.watch(allUsersProvider);
+    final usersAsync = ref.watch(orgUsersProvider);
     final modulesAsync = ref.watch(allModulesProvider);
     final modules = modulesAsync.valueOrNull ?? [];
 
@@ -125,6 +115,24 @@ class _UserCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppTheme.textDim, fontSize: 11),
                     ),
+                    if ((user.techRole ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withAlpha(25),
+                          border: Border.all(color: AppTheme.primary.withAlpha(80)),
+                        ),
+                        child: Text(
+                          user.techRole!,
+                          style: const TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 9, letterSpacing: 0.8,
+                            fontFamily: 'Space Mono',
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

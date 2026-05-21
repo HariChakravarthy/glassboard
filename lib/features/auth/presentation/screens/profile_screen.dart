@@ -60,24 +60,56 @@ class ProfileScreen extends ConsumerWidget {
                       label: user.role.toUpperCase().replaceAll('_', ' '),
                       color: roleColor,
                     ),
+                    if ((user.techRole ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withAlpha(20),
+                          border: Border.all(color: AppTheme.primary.withAlpha(80)),
+                        ),
+                        child: Text(
+                          user.techRole!,
+                          style: const TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 10, letterSpacing: 1,
+                            fontFamily: 'Space Mono',
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
               // Info cards
-              GlassCard(
-                padding: const EdgeInsets.all(0),
-                child: Column(
-                  children: [
-                    _InfoTile('ACCOUNT ID', '${user.uid.substring(0, 12)}…', Icons.badge_outlined),
-                    const Divider(height: 1),
-                    _InfoTile('MODULE', user.moduleId ?? 'Not assigned', Icons.view_module_outlined),
-                    const Divider(height: 1),
-                    _InfoTile('MEMBER SINCE',
-                      user.createdAt.toString().substring(0, 10), Icons.calendar_today_outlined),
-                  ],
-                ),
+              Builder(
+                builder: (context) {
+                  final orgAsync = ref.watch(organizationProvider(user.orgId));
+                  final inviteCode = orgAsync.valueOrNull?['inviteCode'] ?? 'Loading...';
+                  final orgName = orgAsync.valueOrNull?['name'] ?? 'Loading...';
+
+                  return GlassCard(
+                    padding: const EdgeInsets.all(0),
+                    child: Column(
+                      children: [
+                        _InfoTile('ORGANIZATION NAME', orgName, Icons.business_outlined),
+                        const Divider(height: 1),
+                        _InfoTile('ORGANIZATION ID', user.orgId.isNotEmpty ? user.orgId : '—', Icons.badge_outlined),
+                        const Divider(height: 1),
+                        _InfoTile('INVITE CODE', inviteCode, Icons.vpn_key_outlined),
+                        if ((user.techRole ?? '').isNotEmpty) ...[
+                          const Divider(height: 1),
+                          _InfoTile('TECH ROLE', user.techRole!, Icons.code_rounded),
+                        ],
+                        const Divider(height: 1),
+                        _InfoTile('MEMBER SINCE',
+                          user.createdAt.toString().substring(0, 10), Icons.calendar_today_outlined),
+                      ],
+                    ),
+                  );
+                }
               ).animate().fadeIn(delay: 200.ms),
               const SizedBox(height: 24),
 

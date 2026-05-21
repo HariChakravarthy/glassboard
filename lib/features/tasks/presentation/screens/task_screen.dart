@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/providers/app_providers.dart';
@@ -47,20 +48,24 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
           Expanded(
             child: tasksAsync.when(
               data: (tasks) {
+                final userTasks = user?.isMember == true
+                    ? tasks.where((t) => t.assignedTo == user?.uid).toList()
+                    : tasks;
+
                 final filtered = _filterPriority == 'ALL'
-                    ? tasks
-                    : tasks.where((t) => t.priority == _filterPriority).toList();
+                    ? userTasks
+                    : userTasks.where((t) => t.priority == _filterPriority).toList();
 
                 if (filtered.isEmpty) {
                   return EmptyState(
                     icon: Icons.checklist_rounded,
                     title: 'No Tasks',
-                    subtitle: canEdit ? 'Tap + to add tasks' : null,
+                    subtitle: canEdit ? 'Tap + to add tasks' : 'No tasks assigned to you.',
                   );
                 }
 
-                final completed = tasks.where((t) => t.completed).length;
-                final total = tasks.length;
+                final completed = userTasks.where((t) => t.completed).length;
+                final total = userTasks.length;
 
                 return ListView(
                   padding: const EdgeInsets.all(16),
@@ -97,6 +102,10 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                       _TaskCard(
                         task: e.value,
                         canEdit: canEdit,
+                        onTap: () => context.push(
+                          '/modules/${widget.moduleId}/tasks/${e.value.id}/detail',
+                          extra: e.value,
+                        ),
                         onToggle: () => ref.read(moduleRepositoryProvider)
                             .toggleTaskCompletion(e.value),
                         onDelete: canEdit
@@ -126,6 +135,14 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
     final descCtrl  = TextEditingController();
     String priority = AppConstants.priorityMedium;
     DateTime? dueDate;
+    final allUsers = ref.read(orgUsersProvider).valueOrNull ?? [];
+
+    // Filter all members in the organization
+    final availableMembers = allUsers.where((u) {
+      return u.orgId == user.orgId && u.role == AppConstants.roleMember && u.uid != user.uid;
+    }).toList();
+
+    String selectedAssigneeId = availableMembers.isNotEmpty ? availableMembers.first.uid : user.uid;
 
     await showDialog(
       context: context,
@@ -148,6 +165,33 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                   style: const TextStyle(color: AppTheme.textPrimary),
                   decoration: const InputDecoration(labelText: 'Description (optional)'),
                   maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedAssigneeId,
+                  dropdownColor: AppTheme.surface,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(labelText: 'Assign Task To'),
+                  items: [
+                    DropdownMenuItem(
+                      value: user.uid,
+                      child: Text('${user.name} (Self / Lead)', style: const TextStyle(color: AppTheme.textPrimary)),
+                    ),
+                    ...availableMembers.map((m) => DropdownMenuItem(
+                      value: m.uid,
+                      child: Text(
+                        m.techRole != null && m.techRole!.isNotEmpty
+                            ? '${m.name}  •  ${m.techRole}'
+                            : m.name,
+                        style: const TextStyle(color: AppTheme.textPrimary),
+                      ),
+                    )),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDState(() => selectedAssigneeId = val);
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
                 Text('PRIORITY', style: Theme.of(context).textTheme.labelSmall),
@@ -208,7 +252,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                   id:          '',
                   moduleId:    widget.moduleId,
                   title:       titleCtrl.text.trim(),
-                  assignedTo:  user.uid,
+                  assignedTo:  selectedAssigneeId,
                   priority:    priority,
                   completed:   false,
                   dueDate:     dueDate,
@@ -278,21 +322,41 @@ class _PriorityFilter extends StatelessWidget {
 }
 
 // ── Task Card ──────────────────────────────────────────────────────
-class _TaskCard extends StatelessWidget {
+class _TaskCard extends ConsumerWidget {
   final TaskModel task;
   final bool canEdit;
+  final VoidCallback onTap;
   final VoidCallback onToggle;
   final VoidCallback? onDelete;
-  const _TaskCard({required this.task, required this.canEdit,
-      required this.onToggle, this.onDelete});
+  const _TaskCard({
+    required this.task,
+    required this.canEdit,
+    required this.onTap,
+    required this.onToggle,
+    this.onDelete,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isOverdue = task.dueDate != null &&
         !task.completed &&
         task.dueDate!.isBefore(DateTime.now());
 
-    return Container(
+    final usersAsync = ref.watch(orgUsersProvider);
+    final assigneeName = usersAsync.when(
+      data: (users) {
+        final match = users.where((u) => u.uid == task.assignedTo).firstOrNull;
+        if (match == null) return 'Unknown User';
+        final tech = (match.techRole ?? '').isNotEmpty ? '  •  ${match.techRole}' : '';
+        return '${match.name}$tech';
+      },
+      loading: () => 'Loading...',
+      error: (_, __) => 'Error',
+    );
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -333,15 +397,44 @@ class _TaskCard extends StatelessWidget {
             fontSize: 13,
             decoration: task.completed ? TextDecoration.lineThrough : null,
           )),
-        subtitle: task.dueDate != null
-            ? Text(
-                'Due: ${DateFormat('dd MMM').format(task.dueDate!)}',
-                style: TextStyle(
-                  color: isOverdue ? AppTheme.danger : AppTheme.textDim,
-                  fontSize: 11,
-                ),
-              )
-            : null,
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if ((task.description ?? '').isNotEmpty) ...[
+                Text(task.description!,
+                  style: const TextStyle(color: AppTheme.textDim, fontSize: 11)),
+                const SizedBox(height: 4),
+              ],
+              Row(
+                children: [
+                  const Icon(Icons.person_outline_rounded, size: 12, color: AppTheme.textMuted),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(assigneeName,
+                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (task.dueDate != null) ...[
+                    const SizedBox(width: 12),
+                    const Icon(Icons.calendar_today_outlined, size: 12, color: AppTheme.textMuted),
+                    const SizedBox(width: 4),
+                    Text(
+                      DateFormat('dd MMM').format(task.dueDate!),
+                      style: TextStyle(
+                        color: isOverdue ? AppTheme.danger : AppTheme.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -357,6 +450,6 @@ class _TaskCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 }

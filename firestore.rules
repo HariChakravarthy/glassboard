@@ -43,9 +43,9 @@ service cloud.firestore {
 
     // ── Users ──────────────────────────────────────────────────────
     match /users/{uid} {
-      allow read: if isSignedIn() && (resource == null || resource.data.orgId == userOrg());
+      allow read: if isSignedIn() && (isOwner(uid) || (resource != null && resource.data.orgId == userOrg()));
       allow create: if isOwner(uid);
-      allow update: if (isOwner(uid) && (request.resource.data.orgId == resource.data.orgId)) || (isAdmin() && isOrgUser(resource.data));
+      allow update: if (isOwner(uid) && (request.resource.data.orgId == resource.data.orgId)) || (isModuleLead() && isOrgUser(resource.data));
       allow delete: if isAdmin() && isOrgUser(resource.data);
     }
 
@@ -61,6 +61,16 @@ service cloud.firestore {
         allow read: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
         allow create, update: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
         allow delete: if isModuleLead() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
+
+        // Comments subcollection
+        match /comments/{commentId} {
+          allow read, write: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
+        }
+
+        // Attachments subcollection
+        match /attachments/{attachmentId} {
+          allow read, write: if isSignedIn() && isOrgUser(get(/databases/$(database)/documents/modules/$(moduleId)).data);
+        }
       }
     }
 

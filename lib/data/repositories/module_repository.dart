@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/module_model.dart';
 import '../models/task_model.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/firestore_retry.dart';
 
 class ModuleRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -17,21 +18,25 @@ class ModuleRepository {
 
   Stream<List<ModuleModel>> watchAllModules(String orgId) {
     if (orgId.isEmpty) return Stream.value([]);
-    return _db.collection(AppConstants.modulesCollection)
-        .where('orgId', isEqualTo: orgId)
-        .snapshots()
-        .map((s) {
-          final list = s.docs.map(ModuleModel.fromFirestore).toList();
-          list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          return list;
-        });
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.modulesCollection)
+          .where('orgId', isEqualTo: orgId)
+          .snapshots()
+          .map((s) {
+            final list = s.docs.map(ModuleModel.fromFirestore).toList();
+            list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+            return list;
+          });
+    });
   }
 
   Stream<ModuleModel?> watchModule(String moduleId) {
-    return _db.collection(AppConstants.modulesCollection)
-        .doc(moduleId)
-        .snapshots()
-        .map((s) => s.exists ? ModuleModel.fromFirestore(s) : null);
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.modulesCollection)
+          .doc(moduleId)
+          .snapshots()
+          .map((s) => s.exists ? ModuleModel.fromFirestore(s) : null);
+    });
   }
 
   Future<ModuleModel> getModule(String moduleId) async {
@@ -89,12 +94,14 @@ class ModuleRepository {
   // ── Tasks ──────────────────────────────────────────────────────────
 
   Stream<List<TaskModel>> watchTasks(String moduleId) {
-    return _db.collection(AppConstants.modulesCollection)
-        .doc(moduleId)
-        .collection(AppConstants.tasksSubcollection)
-        .orderBy('createdAt', descending: false)
-        .snapshots()
-        .map((s) => s.docs.map((d) => TaskModel.fromFirestore(d, moduleId)).toList());
+    return retryOnPermissionDenied(() {
+      return _db.collection(AppConstants.modulesCollection)
+          .doc(moduleId)
+          .collection(AppConstants.tasksSubcollection)
+          .orderBy('createdAt', descending: false)
+          .snapshots()
+          .map((s) => s.docs.map((d) => TaskModel.fromFirestore(d, moduleId)).toList());
+    });
   }
 
   Future<String> createTask(TaskModel task) async {
@@ -104,6 +111,21 @@ class ModuleRepository {
         .collection(AppConstants.tasksSubcollection)
         .add(task.toMap());
     await _recalcProgress(task.moduleId);
+
+    try {
+      final userDoc = await _db.collection('users').doc(task.assignedTo).get();
+      if (userDoc.exists) {
+        final role = userDoc.data()?['role'];
+        if (role == AppConstants.roleMember) {
+          await _db.collection('users').doc(task.assignedTo).update({
+            'moduleId': task.moduleId,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to auto-assign member to module: $e');
+    }
+
     return ref.id;
   }
 
@@ -124,6 +146,20 @@ class ModuleRepository {
         .collection(AppConstants.tasksSubcollection)
         .doc(task.id)
         .update(task.toMap());
+
+    try {
+      final userDoc = await _db.collection('users').doc(task.assignedTo).get();
+      if (userDoc.exists) {
+        final role = userDoc.data()?['role'];
+        if (role == AppConstants.roleMember) {
+          await _db.collection('users').doc(task.assignedTo).update({
+            'moduleId': task.moduleId,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to auto-assign member to module: $e');
+    }
   }
 
   Future<void> deleteTask(String moduleId, String taskId) async {
@@ -196,5 +232,79 @@ class ModuleRepository {
         .get();
     if (snap.docs.isEmpty) return true;
     return snap.docs.every((d) => d['completed'] == true);
+  }
+
+  // ── Task Comments ───────────────────────────────────────────────────
+
+  Stream<List<Map<String, dynamic>>> watchTaskComments(String moduleId, String taskId) {
+    return _db
+        .collection(AppConstants.modulesCollection)
+        .doc(moduleId)
+        .collection(AppConstants.tasksSubcollection)
+        .doc(taskId)
+        .collection('comments')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> addTaskComment({
+    required String moduleId,
+    required String taskId,
+    required String authorId,
+    required String authorName,
+    required String text,
+  }) async {
+    await _db
+        .collection(AppConstants.modulesCollection)
+        .doc(moduleId)
+        .collection(AppConstants.tasksSubcollection)
+        .doc(taskId)
+        .collection('comments')
+        .add({
+          'authorId':   authorId,
+          'authorName': authorName,
+          'text':       text,
+          'createdAt':  FieldValue.serverTimestamp(),
+        });
+  }
+
+  // ── Task Attachments ────────────────────────────────────────────────
+
+  Stream<List<Map<String, dynamic>>> watchTaskAttachments(String moduleId, String taskId) {
+    return _db
+        .collection(AppConstants.modulesCollection)
+        .doc(moduleId)
+        .collection(AppConstants.tasksSubcollection)
+        .doc(taskId)
+        .collection('attachments')
+        .orderBy('uploadedAt', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> addTaskAttachment({
+    required String moduleId,
+    required String taskId,
+    required String uploadedById,
+    required String uploadedByName,
+    required String fileName,
+    required String downloadUrl,
+    required int sizeBytes,
+  }) async {
+    await _db
+        .collection(AppConstants.modulesCollection)
+        .doc(moduleId)
+        .collection(AppConstants.tasksSubcollection)
+        .doc(taskId)
+        .collection('attachments')
+        .add({
+          'uploadedById':   uploadedById,
+          'uploadedByName': uploadedByName,
+          'fileName':       fileName,
+          'downloadUrl':    downloadUrl,
+          'sizeBytes':      sizeBytes,
+          'uploadedAt':     FieldValue.serverTimestamp(),
+        });
   }
 }

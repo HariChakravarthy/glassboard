@@ -3,11 +3,13 @@ import '../../data/repositories/module_repository.dart';
 import '../../data/repositories/handshake_repository.dart';
 import '../../data/repositories/file_repository.dart';
 import '../../data/repositories/audit_repository.dart';
+import '../../data/repositories/admin_repository.dart';
 import '../../data/models/module_model.dart';
 import '../../data/models/task_model.dart';
 import '../../data/models/handshake_model.dart';
 import '../../data/models/file_model.dart';
 import '../../data/models/audit_model.dart';
+import '../../data/models/user_model.dart';
 import 'auth_provider.dart';
 
 // ── Repositories ───────────────────────────────────────────────────
@@ -15,6 +17,13 @@ final moduleRepositoryProvider = Provider<ModuleRepository>((_) => ModuleReposit
 final handshakeRepositoryProvider = Provider<HandshakeRepository>((_) => HandshakeRepository());
 final fileRepositoryProvider = Provider<FileRepository>((_) => FileRepository());
 final auditRepositoryProvider = Provider<AuditRepository>((_) => AuditRepository());
+final adminRepositoryProvider = Provider<AdminRepository>((_) => AdminRepository());
+
+final orgUsersProvider = StreamProvider<List<UserModel>>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return Stream.value([]);
+  return ref.watch(adminRepositoryProvider).watchAllUsers(user.orgId);
+});
 
 // ── Modules ────────────────────────────────────────────────────────
 final allModulesProvider = StreamProvider<List<ModuleModel>>((ref) {
@@ -46,16 +55,16 @@ final tasksProvider = StreamProvider.family<List<TaskModel>, String>((ref, modul
 // ── Handshakes ─────────────────────────────────────────────────────
 final incomingHandshakesProvider = StreamProvider.family<List<HandshakeModel>, String>(
     (ref, moduleId) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
-  return ref.watch(handshakeRepositoryProvider).watchIncomingHandshakes(moduleId);
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null || user.orgId.isEmpty) return Stream.value([]);
+  return ref.watch(handshakeRepositoryProvider).watchIncomingHandshakes(user.orgId, moduleId);
 });
 
 final moduleHandshakesProvider = StreamProvider.family<List<HandshakeModel>, String>(
     (ref, moduleId) {
-  final auth = ref.watch(authStateProvider).valueOrNull;
-  if (auth == null) return Stream.value([]);
-  return ref.watch(handshakeRepositoryProvider).watchModuleHandshakes(moduleId);
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null || user.orgId.isEmpty) return Stream.value([]);
+  return ref.watch(handshakeRepositoryProvider).watchModuleHandshakes(user.orgId, moduleId);
 });
 
 final allHandshakesProvider = StreamProvider<List<HandshakeModel>>((ref) {
