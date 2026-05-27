@@ -1,7 +1,6 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError }                   = require("firebase-functions/v2/https");
 const { onSchedule }                           = require("firebase-functions/v2/scheduler");
-const { defineSecret }                         = require("firebase-functions/params");
 const { initializeApp }                        = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp }  = require("firebase-admin/firestore");
 const { getMessaging }                         = require("firebase-admin/messaging");
@@ -11,10 +10,10 @@ const ExcelJS                                  = require("exceljs");
 initializeApp();
 const db = getFirestore();
 
-// ── Secrets (set once via: firebase functions:config:set ...) ─────────
-// Store credentials as Firebase Secret Manager params
-const gmailUser = defineSecret("GMAIL_USER");
-const gmailPass = defineSecret("GMAIL_PASS");
+// ── Email credentials from .env file (no Secret Manager needed) ──────
+// Set GMAIL_USER and GMAIL_PASS in functions/.env before deploying
+const GMAIL_USER = process.env.GMAIL_USER || "";
+const GMAIL_PASS = process.env.GMAIL_PASS || "";
 
 // ── Helper: build Nodemailer transporter ────────────────────────────
 function createTransporter(user, pass) {
@@ -180,7 +179,7 @@ function taskAssignedEmailHtml({ taskTitle, priority, moduleName }) {
 // TRIGGER 1: New handshake created → notify receiving module (FCM + Email)
 // ══════════════════════════════════════════════════════════════════════
 exports.onHandshakeCreated = onDocumentCreated(
-  { document: "handshakes/{handshakeId}", secrets: [gmailUser, gmailPass] },
+  "handshakes/{handshakeId}",
   async (event) => {
     const hs = event.data.data();
     if (!hs) return;
@@ -212,8 +211,8 @@ exports.onHandshakeCreated = onDocumentCreated(
           toModuleName,
           proofNote: hs.proofNote || "",
         }),
-        gmailUserVal: gmailUser.value(),
-        gmailPassVal: gmailPass.value(),
+        gmailUserVal: GMAIL_USER,
+        gmailPassVal: GMAIL_PASS,
       });
     }));
   }
@@ -223,7 +222,7 @@ exports.onHandshakeCreated = onDocumentCreated(
 // TRIGGER 2: Handshake status updated → notify sender (FCM + Email)
 // ══════════════════════════════════════════════════════════════════════
 exports.onHandshakeUpdated = onDocumentUpdated(
-  { document: "handshakes/{handshakeId}", secrets: [gmailUser, gmailPass] },
+  "handshakes/{handshakeId}",
   async (event) => {
     const before = event.data.before.data();
     const after  = event.data.after.data();
@@ -270,8 +269,8 @@ exports.onHandshakeUpdated = onDocumentUpdated(
         toEmail: u.email,
         subject: emailSubject,
         bodyHtml: emailBodyHtml,
-        gmailUserVal: gmailUser.value(),
-        gmailPassVal: gmailPass.value(),
+        gmailUserVal: GMAIL_USER,
+        gmailPassVal: GMAIL_PASS,
       });
     }));
   }
@@ -281,7 +280,7 @@ exports.onHandshakeUpdated = onDocumentUpdated(
 // TRIGGER 3: Task assigned → notify assignee (FCM + Email)
 // ══════════════════════════════════════════════════════════════════════
 exports.onTaskCreated = onDocumentCreated(
-  { document: "modules/{moduleId}/tasks/{taskId}", secrets: [gmailUser, gmailPass] },
+  "modules/{moduleId}/tasks/{taskId}",
   async (event) => {
     const task = event.data.data();
     if (!task || !task.assignedTo) return;
@@ -309,8 +308,8 @@ exports.onTaskCreated = onDocumentCreated(
         priority: task.priority || "MEDIUM",
         moduleName,
       }),
-      gmailUserVal: gmailUser.value(),
-      gmailPassVal: gmailPass.value(),
+      gmailUserVal: GMAIL_USER,
+      gmailPassVal: GMAIL_PASS,
     });
   }
 );
@@ -381,7 +380,6 @@ exports.escalateOverdueHandshakes = onSchedule("every 60 minutes", async () => {
 // FEATURE 7: HTTPS Callable — Export Audit Log as Excel & Email it
 // ══════════════════════════════════════════════════════════════════════
 exports.exportAuditReportEmail = onCall(
-  { secrets: [gmailUser, gmailPass] },
   async (request) => {
     // Auth guard
     if (!request.auth) {
@@ -561,15 +559,15 @@ exports.exportAuditReportEmail = onCall(
           The Excel file contains a Summary sheet and a full Audit Log sheet with color-coded entries.
         </p>
       `,
-      gmailUserVal: gmailUser.value(),
-      gmailPassVal: gmailPass.value(),
+      gmailUserVal: GMAIL_USER,
+      gmailPassVal: GMAIL_PASS,
       // Pass attachment separately (handled below)
     });
 
     // Send again with attachment (nodemailer needs a separate call for attachments)
-    const transporter = createTransporter(gmailUser.value(), gmailPass.value());
+    const transporter = createTransporter(GMAIL_USER, GMAIL_PASS);
     await transporter.sendMail({
-      from: `"Glassboard" <${gmailUser.value()}>`,
+      from: `"Glassboard" <${GMAIL_USER}>`,
       to: email,
       subject: `📊 [Glassboard] Audit Report — ${orgName} (${dateLabel})`,
       html: `
