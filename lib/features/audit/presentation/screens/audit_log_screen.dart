@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,15 +22,17 @@ class AuditLogScreen extends ConsumerStatefulWidget {
 class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
   String _filterAction = '';
   String _filterModule = '';
-  bool _exporting = false;
+  bool _exporting      = false;
+  bool _emailSending   = false;
 
+  // ── Existing: Export CSV via native share sheet ────────────────────
   Future<void> _exportCsv(List<AuditLogModel> logs) async {
     setState(() => _exporting = true);
     try {
       final buf = StringBuffer();
       buf.writeln('Timestamp,Action,Actor,Module,Details');
       for (final l in logs) {
-        final ts   = DateFormat('yyyy-MM-dd HH:mm:ss').format(l.timestamp);
+        final ts    = DateFormat('yyyy-MM-dd HH:mm:ss').format(l.timestamp);
         final actor = l.actorName.isNotEmpty ? l.actorName : l.actorId.substring(0, 8);
         final meta  = l.metadata.entries.map((e) => '${e.key}=${e.value}').join('; ');
         buf.writeln('"$ts","${l.action}","$actor","${l.targetModule}","$meta"');
@@ -51,12 +54,144 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     }
   }
 
+  // ── NEW: Email Excel report via Cloud Function ─────────────────────
+  Future<void> _emailExcelReport(String orgId, String email) async {
+    setState(() => _emailSending = true);
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('exportAuditReportEmail');
+      await callable.call({'orgId': orgId, 'email': email});
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: AppTheme.bg, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '📧 Excel report sent to $email',
+                    style: const TextStyle(color: AppTheme.bg, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.success,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Email failed: ${e.message}'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _emailSending = false);
+    }
+  }
+
+  // ── Email confirmation dialog ──────────────────────────────────────
+  void _showEmailDialog(String orgId, String defaultEmail) {
+    final emailCtrl = TextEditingController(text: defaultEmail);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Row(
+          children: [
+            Icon(Icons.email_outlined, color: AppTheme.success, size: 20),
+            SizedBox(width: 10),
+            Text(
+              'EMAIL EXCEL REPORT',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 14,
+                letterSpacing: 1.5,
+                fontFamily: 'Syne',
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'A styled Excel spreadsheet with your full audit log will be generated and emailed to you.',
+              style: TextStyle(color: AppTheme.textDim, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(color: AppTheme.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Recipient Email',
+                labelStyle: TextStyle(color: AppTheme.textMuted),
+                prefixIcon: Icon(Icons.alternate_email_rounded,
+                    color: AppTheme.textMuted, size: 18),
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppTheme.border)),
+                focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppTheme.success)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL',
+                style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.success,
+              foregroundColor: AppTheme.bg,
+            ),
+            onPressed: () {
+              final email = emailCtrl.text.trim();
+              if (email.isEmpty || !email.contains('@')) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a valid email address.'),
+                    backgroundColor: AppTheme.danger,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              _emailExcelReport(orgId, email);
+            },
+            icon: const Icon(Icons.send_rounded, size: 16),
+            label: const Text('SEND REPORT'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
-    final user = userAsync.valueOrNull;
+    final user      = userAsync.valueOrNull;
 
-    // Only admins should see full audit
+    // Only admins see the full audit log
     if (user != null && !user.isOrgAdmin) {
       return const Scaffold(
         backgroundColor: AppTheme.bg,
@@ -70,15 +205,15 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
     }
 
     final auditAsync = ref.watch(auditLogProvider);
-    final logs = auditAsync.valueOrNull ?? [];
-    var filtered = logs;
+    final logs       = auditAsync.valueOrNull ?? [];
+    var   filtered   = logs;
     if (_filterAction.isNotEmpty) {
       filtered = filtered.where((l) =>
-        l.action.contains(_filterAction.toUpperCase())).toList();
+          l.action.contains(_filterAction.toUpperCase())).toList();
     }
     if (_filterModule.isNotEmpty) {
       filtered = filtered.where((l) =>
-        l.targetModule.toLowerCase().contains(_filterModule.toLowerCase())).toList();
+          l.targetModule.toLowerCase().contains(_filterModule.toLowerCase())).toList();
     }
 
     return Scaffold(
@@ -88,15 +223,42 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
         subtitle: 'IMMUTABLE RECORD',
         accentColor: AppTheme.success,
         actions: [
+          // ── Email Excel Report button ──────────────────────────
+          if (_emailSending)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                width: 18, height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppTheme.success),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.email_outlined, size: 20),
+              tooltip: 'Email Excel Report',
+              color: AppTheme.success,
+              onPressed: user == null
+                  ? null
+                  : () => _showEmailDialog(user.orgId, user.email),
+            ),
+
+          // ── CSV download button ────────────────────────────────
           IconButton(
             icon: _exporting
-                ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.success))
+                ? const SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppTheme.success))
                 : const Icon(Icons.download_rounded, size: 20),
             tooltip: 'Export CSV',
-            onPressed: _exporting || filtered.isEmpty ? null : () => _exportCsv(filtered),
-            color: AppTheme.success,
+            onPressed: _exporting || filtered.isEmpty
+                ? null
+                : () => _exportCsv(filtered),
+            color: AppTheme.textSecondary,
           ),
+
+          // ── Filter button ──────────────────────────────────────
           IconButton(
             icon: const Icon(Icons.filter_list_rounded, size: 20),
             onPressed: () => _showFilterSheet(context),
@@ -105,14 +267,14 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
         ],
       ),
       body: auditAsync.when(
-        data: (_) {          if (filtered.isEmpty) {
+        data: (_) {
+          if (filtered.isEmpty) {
             return const EmptyState(
               icon: Icons.receipt_long_outlined,
               title: 'No Audit Entries',
               subtitle: 'Actions will appear here as they happen.',
             );
           }
-
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: filtered.length,
@@ -121,9 +283,9 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
           );
         },
         loading: () => const Padding(
-          padding: EdgeInsets.all(24), child: LoadingCardSkeleton()),
+            padding: EdgeInsets.all(24), child: LoadingCardSkeleton()),
         error: (e, _) => Center(
-          child: Text('$e', style: const TextStyle(color: AppTheme.danger))),
+            child: Text('$e', style: const TextStyle(color: AppTheme.danger))),
       ),
     );
   }
@@ -141,18 +303,20 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('FILTER AUDIT LOG',
-              style: Theme.of(context).textTheme.labelMedium),
+                style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: 16),
             TextField(
               controller: actionCtrl,
               style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: 'Action (e.g. HANDSHAKE)'),
+              decoration: const InputDecoration(
+                  labelText: 'Action (e.g. HANDSHAKE)'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: moduleCtrl,
               style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: 'Module ID or Name'),
+              decoration:
+                  const InputDecoration(labelText: 'Module ID or Name'),
             ),
             const SizedBox(height: 20),
             Row(
@@ -160,7 +324,10 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
-                      setState(() { _filterAction = ''; _filterModule = ''; });
+                      setState(() {
+                        _filterAction = '';
+                        _filterModule = '';
+                      });
                       Navigator.pop(context);
                     },
                     child: const Text('CLEAR'),
@@ -188,16 +355,17 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
   }
 }
 
+// ── Audit Card ─────────────────────────────────────────────────────
 class _AuditCard extends StatelessWidget {
   final AuditLogModel log;
   const _AuditCard({required this.log});
 
   Color get _actionColor => switch (log.action) {
-    String a when a.contains('ACCEPTED') => AppTheme.success,
-    String a when a.contains('REJECTED') => AppTheme.danger,
+    String a when a.contains('ACCEPTED')  => AppTheme.success,
+    String a when a.contains('REJECTED')  => AppTheme.danger,
     String a when a.contains('HANDSHAKE') => AppTheme.warning,
-    String a when a.contains('FILE') => AppTheme.purple,
-    _ => AppTheme.textMuted,
+    String a when a.contains('FILE')      => AppTheme.purple,
+    _                                     => AppTheme.textMuted,
   };
 
   @override
@@ -207,7 +375,7 @@ class _AuditCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         border: Border(
-          left: BorderSide(color: _actionColor, width: 2),
+          left:   BorderSide(color: _actionColor, width: 2),
           top:    const BorderSide(color: AppTheme.border),
           right:  const BorderSide(color: AppTheme.border),
           bottom: const BorderSide(color: AppTheme.border),
@@ -223,22 +391,27 @@ class _AuditCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(log.action,
-                    style: TextStyle(
-                      color: _actionColor,
-                      fontSize: 11, letterSpacing: 2,
-                      fontFamily: 'Space Mono', fontWeight: FontWeight.w700,
-                    )),
+                      style: TextStyle(
+                        color: _actionColor,
+                        fontSize: 11,
+                        letterSpacing: 2,
+                        fontFamily: 'Space Mono',
+                        fontWeight: FontWeight.w700,
+                      )),
                   const SizedBox(height: 4),
-                  Text('Actor: ${log.actorName.isNotEmpty ? log.actorName : log.actorId.substring(0, 8)}',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  Text(
+                      'Actor: ${log.actorName.isNotEmpty ? log.actorName : log.actorId.substring(0, 8)}',
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 12)),
                   if (log.targetModule.isNotEmpty)
                     Text('Module: ${log.targetModule}',
-                      style: const TextStyle(color: AppTheme.textDim, fontSize: 11)),
+                        style: const TextStyle(
+                            color: AppTheme.textDim, fontSize: 11)),
                 ],
               ),
             ),
             Text(DateFormat('dd MMM HH:mm').format(log.timestamp),
-              style: const TextStyle(color: AppTheme.textDim, fontSize: 10)),
+                style: const TextStyle(color: AppTheme.textDim, fontSize: 10)),
           ],
         ),
       ),
