@@ -6,20 +6,46 @@ const { getFirestore, FieldValue, Timestamp }  = require("firebase-admin/firesto
 const { getMessaging }                         = require("firebase-admin/messaging");
 const nodemailer                               = require("nodemailer");
 const ExcelJS                                  = require("exceljs");
+const sgMail                                   = require("@sendgrid/mail");
 
 initializeApp();
 const db = getFirestore();
 
-// ── Email credentials from .env file (no Secret Manager needed) ──────
-// Set GMAIL_USER and GMAIL_PASS in functions/.env before deploying
-const GMAIL_USER = process.env.GMAIL_USER || "";
-const GMAIL_PASS = process.env.GMAIL_PASS || "";
+// ── Email credentials from .env file ────────────────────────────────
+const GMAIL_USER       = process.env.GMAIL_USER || "";
+const GMAIL_PASS       = process.env.GMAIL_PASS || "";
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
+const SMTP_FROM        = process.env.SMTP_FROM || (GMAIL_USER ? `"Glassboard" <${GMAIL_USER}>` : `"Glassboard" <noreply@glassboard.app>`);
+const SMTP_HOST        = process.env.SMTP_HOST || "";
+const SMTP_PORT        = process.env.SMTP_PORT || "465";
+const SMTP_SECURE      = process.env.SMTP_SECURE !== "false"; // default to true (use TLS/SSL)
+const SMTP_USER        = process.env.SMTP_USER || "";
+const SMTP_PASS        = process.env.SMTP_PASS || "";
 
 // ── Helper: build Nodemailer transporter ────────────────────────────
 function createTransporter(user, pass) {
+  const finalUser = user || SMTP_USER || GMAIL_USER;
+  const finalPass = pass || SMTP_PASS || GMAIL_PASS;
+
+  if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+    return nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: parseInt(SMTP_PORT, 10),
+      secure: SMTP_SECURE,
+      auth: {
+        user: finalUser,
+        pass: finalPass,
+      },
+    });
+  }
+
+  // Fallback to Gmail service
   return nodemailer.createTransport({
     service: "gmail",
-    auth: { user, pass },
+    auth: {
+      user: finalUser,
+      pass: finalPass,
+    },
   });
 }
 
@@ -64,46 +90,106 @@ async function sendNotification({ recipientId, type, message, relatedId, fcmToke
 }
 
 // ── Helper: send styled HTML email ──────────────────────────────────
-async function sendEmail({ toEmail, subject, bodyHtml, gmailUserVal, gmailPassVal }) {
-  if (!gmailUserVal || !gmailPassVal) {
-    console.warn("Email credentials not set. Skipping email.");
-    return;
-  }
+async function sendEmail({ toEmail, subject, bodyHtml, attachment, gmailUserVal, gmailPassVal }) {
   if (!toEmail) {
     console.warn("No recipient email. Skipping email.");
     return;
   }
 
-  const transporter = createTransporter(gmailUserVal, gmailPassVal);
-  const mailOptions = {
-    from: `"Glassboard" <${gmailUserVal}>`,
-    to: toEmail,
-    subject,
-    html: `
-      <div style="font-family: Arial, sans-serif; background: #0D0D0D; color: #E0E0E0;
-                  padding: 32px; border-radius: 8px; max-width: 600px; margin: auto;">
-        <div style="border-left: 4px solid #00E5FF; padding-left: 16px; margin-bottom: 24px;">
-          <h2 style="margin: 0; color: #00E5FF; font-size: 20px; letter-spacing: 2px;">
-            GLASSBOARD
-          </h2>
-          <p style="margin: 4px 0 0; color: #7E7E7E; font-size: 11px; letter-spacing: 1px;">
-            PROJECT HANDSHAKE PLATFORM
-          </p>
-        </div>
-        ${bodyHtml}
-        <hr style="border: none; border-top: 1px solid #2A2A2A; margin: 24px 0;" />
-        <p style="color: #4A4A4A; font-size: 10px;">
-          This is an automated message from Glassboard. Do not reply to this email.
-        </p>
-      </div>
-    `,
-  };
+  // 1. Try SendGrid if API Key is configured
+  if (SENDGRID_API_KEY) {
+    try {
+      sgMail.setApiKey(SENDGRID_API_KEY);
+      const msg = {
+        to: toEmail,
+        from: SMTP_FROM,
+        subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; background: #0D0D0D; color: #E0E0E0;
+                      padding: 32px; border-radius: 8px; max-width: 600px; margin: auto;">
+            <div style="border-left: 4px solid #00E5FF; padding-left: 16px; margin-bottom: 24px;">
+              <h2 style="margin: 0; color: #00E5FF; font-size: 20px; letter-spacing: 2px;">
+                GLASSBOARD
+              </h2>
+              <p style="margin: 4px 0 0; color: #7E7E7E; font-size: 11px; letter-spacing: 1px;">
+                PROJECT HANDSHAKE PLATFORM
+              </p>
+            </div>
+            ${bodyHtml}
+            <hr style="border: none; border-top: 1px solid #2A2A2A; margin: 24px 0;" />
+            <p style="color: #4A4A4A; font-size: 10px;">
+              This is an automated message from Glassboard. Do not reply to this email.
+            </p>
+          </div>
+        `,
+      };
+
+      if (attachment) {
+        msg.attachments = [
+          {
+            content: attachment.content.toString("base64"),
+            filename: attachment.filename,
+            type: attachment.contentType,
+            disposition: "attachment",
+          },
+        ];
+      }
+
+      await sgMail.send(msg);
+      console.log(`Email sent via SendGrid to ${toEmail}: ${subject}`);
+      return;
+    } catch (e) {
+      console.error("SendGrid email send failed:", e.message);
+      if (e.response && e.response.body) {
+        console.error("SendGrid error body:", JSON.stringify(e.response.body));
+      }
+      console.log("Attempting fallback to Nodemailer/SMTP...");
+    }
+  }
+
+  // 2. Fallback to Nodemailer (SMTP or Gmail)
+  const isGmailConfigured = (gmailUserVal && gmailPassVal) || (GMAIL_USER && GMAIL_PASS);
+  const isSmtpConfigured = SMTP_HOST && SMTP_USER && SMTP_PASS;
+
+  if (!isGmailConfigured && !isSmtpConfigured) {
+    console.warn("No email credentials (SendGrid, SMTP, or Gmail) configured. Skipping email.");
+    return;
+  }
 
   try {
+    const transporter = createTransporter(gmailUserVal, gmailPassVal);
+    const mailOptions = {
+      from: SMTP_FROM,
+      to: toEmail,
+      subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; background: #0D0D0D; color: #E0E0E0;
+                    padding: 32px; border-radius: 8px; max-width: 600px; margin: auto;">
+          <div style="border-left: 4px solid #00E5FF; padding-left: 16px; margin-bottom: 24px;">
+            <h2 style="margin: 0; color: #00E5FF; font-size: 20px; letter-spacing: 2px;">
+              GLASSBOARD
+            </h2>
+            <p style="margin: 4px 0 0; color: #7E7E7E; font-size: 11px; letter-spacing: 1px;">
+              PROJECT HANDSHAKE PLATFORM
+            </p>
+          </div>
+          ${bodyHtml}
+          <hr style="border: none; border-top: 1px solid #2A2A2A; margin: 24px 0;" />
+          <p style="color: #4A4A4A; font-size: 10px;">
+            This is an automated message from Glassboard. Do not reply to this email.
+          </p>
+        </div>
+      `,
+    };
+
+    if (attachment) {
+      mailOptions.attachments = [attachment];
+    }
+
     await transporter.sendMail(mailOptions);
-    console.log(`Email sent to ${toEmail}: ${subject}`);
+    console.log(`Email sent via SMTP/Nodemailer to ${toEmail}: ${subject}`);
   } catch (e) {
-    console.error("Email send failed:", e.message);
+    console.error("SMTP/Nodemailer email send failed:", e.message);
   }
 }
 
@@ -546,7 +632,7 @@ exports.exportAuditReportEmail = onCall(
       bodyHtml: `
         <h3 style="color: #00E676; margin: 0 0 16px;">📊 Audit Report Ready</h3>
         <p style="color: #B0B0B0; font-size: 13px;">
-          Your Glassboard audit log export for <strong style="color: #E0E0E0;">${orgName}</strong> is attached.
+          Your Glassboard audit log export for <strong style="color: #E0E0E0;">${orgName}</strong> is attached as an Excel file.
         </p>
         <ul style="color: #B0B0B0; font-size: 13px; padding-left: 20px;">
           <li>Total Entries: <strong style="color: #E0E0E0;">${totalLogs}</strong></li>
@@ -559,46 +645,11 @@ exports.exportAuditReportEmail = onCall(
           The Excel file contains a Summary sheet and a full Audit Log sheet with color-coded entries.
         </p>
       `,
-      gmailUserVal: GMAIL_USER,
-      gmailPassVal: GMAIL_PASS,
-      // Pass attachment separately (handled below)
-    });
-
-    // Send again with attachment (nodemailer needs a separate call for attachments)
-    const transporter = createTransporter(GMAIL_USER, GMAIL_PASS);
-    await transporter.sendMail({
-      from: `"Glassboard" <${GMAIL_USER}>`,
-      to: email,
-      subject: `📊 [Glassboard] Audit Report — ${orgName} (${dateLabel})`,
-      html: `
-        <div style="font-family: Arial, sans-serif; background: #0D0D0D; color: #E0E0E0;
-                    padding: 32px; border-radius: 8px; max-width: 600px; margin: auto;">
-          <div style="border-left: 4px solid #00E5FF; padding-left: 16px; margin-bottom: 24px;">
-            <h2 style="margin: 0; color: #00E5FF; font-size: 20px; letter-spacing: 2px;">GLASSBOARD</h2>
-            <p style="margin: 4px 0 0; color: #7E7E7E; font-size: 11px; letter-spacing: 1px;">PROJECT HANDSHAKE PLATFORM</p>
-          </div>
-          <h3 style="color: #00E676; margin: 0 0 16px;">📊 Audit Report Ready</h3>
-          <p style="color: #B0B0B0; font-size: 13px;">
-            Your Glassboard audit log export for <strong style="color: #E0E0E0;">${orgName}</strong> is attached as an Excel file.
-          </p>
-          <ul style="color: #B0B0B0; font-size: 13px; padding-left: 20px;">
-            <li>Total Entries: <strong style="color: #E0E0E0;">${totalLogs}</strong></li>
-            <li>Handshake Events: <strong style="color: #FFC107;">${handshakeLogs}</strong></li>
-            <li>Task Events: <strong style="color: #00E5FF;">${taskLogs}</strong></li>
-            <li>Accepted: <strong style="color: #00E676;">${acceptedLogs}</strong></li>
-            <li>Rejected: <strong style="color: #F44336;">${rejectedLogs}</strong></li>
-          </ul>
-          <hr style="border: none; border-top: 1px solid #2A2A2A; margin: 24px 0;" />
-          <p style="color: #4A4A4A; font-size: 10px;">This is an automated message from Glassboard.</p>
-        </div>
-      `,
-      attachments: [
-        {
-          filename: `glassboard_audit_${orgName.replace(/\s+/g, "_")}_${dateLabel}.xlsx`,
-          content: buffer,
-          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        },
-      ],
+      attachment: {
+        filename: `glassboard_audit_${orgName.replace(/\s+/g, "_")}_${dateLabel}.xlsx`,
+        content: buffer,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
     });
 
     console.log(`Audit Excel report sent to ${email} for orgId=${orgId}`);
